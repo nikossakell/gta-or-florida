@@ -71,6 +71,21 @@ BASE_PATH=/gta-or-florida npm run build:pages   # όπως στο GitHub Pages
 
 Το Pages build πηγαίνει στο `dist-pages/`, ξεχωριστά από το `dist/`, ώστε ο Node server να μη σερβίρει ποτέ κατά λάθος τα static answer files.
 
+## Deployment στο Netlify
+
+Ίδιο static build με το GitHub Pages, αλλά σερβίρεται από το `/`. Όλη η ρύθμιση είναι στο `netlify.toml` (build command, publish dir, redirects, headers). Το Node version διαβάζεται από το `.nvmrc`.
+
+1. **Add new site → Import an existing project → GitHub** και επιλέξτε το repo. Τα build settings συμπληρώνονται από το `netlify.toml` (μην αλλάξετε τίποτα: base directory κενό, build command `npm run build:pages`, publish directory `apps/web/dist-pages`).
+2. **Deploy.** Κάθε push στο `main` κάνει νέο deploy. Τα PRs παίρνουν deploy previews.
+3. **Daily rebuild:** Site configuration → Build & deploy → Build hooks → **Add build hook** (π.χ. `daily`, branch `main`). Αντιγράψτε το URL και αποθηκεύστε το στο GitHub ως repository secret `NETLIFY_BUILD_HOOK_URL`. Το `.github/workflows/netlify-daily.yml` το καλεί κάθε μέρα στις 00:07 UTC.
+4. Όταν μπουν πραγματικές ερωτήσεις: Site configuration → Environment variables → `ALLOW_PLACEHOLDER_CONTENT=false`.
+
+Διαφορές από το GitHub Pages:
+
+- Τα deep links επιστρέφουν HTTP 200 (SPA redirect), όχι 404. Τα `/data/*` που λείπουν παραμένουν πραγματικά 404.
+- Υπάρχουν τα ίδια security headers (CSP κ.λπ.) με το Node API. Rate limiting δεν υπάρχει (δεν υπάρχει API).
+- Αν χρησιμοποιείτε **μόνο** Netlify, διαγράψτε το `.github/workflows/pages.yml`, αλλιώς θα αποτυγχάνει σε κάθε push επειδή το Pages δεν είναι ενεργό.
+
 ---
 
 ## Δομή (TypeScript monorepo, npm workspaces)

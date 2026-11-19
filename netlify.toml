@@ -1,0 +1,48 @@
+# Netlify: fully static build (same output as GitHub Pages, served from "/").
+# Node version comes from .nvmrc; dependencies are installed automatically.
+#
+# Daily publishing: Netlify has no cron for builds. .github/workflows/netlify-daily.yml
+# calls a Netlify build hook every day after 00:00 UTC (see README → Netlify).
+
+[build]
+  # ALLOW_PLACEHOLDER_CONTENT defaults to true for the sample data. Set it to "false"
+  # in Site configuration → Environment variables once real questions are in place
+  # (variables set in netlify.toml would override the UI, so it is set here instead).
+  command = "ALLOW_PLACEHOLDER_CONTENT=${ALLOW_PLACEHOLDER_CONTENT:-true} npm run build:pages"
+  publish = "apps/web/dist-pages"
+
+# Missing data files must be real 404s (e.g. today's round not published yet),
+# not the SPA shell. Redirects without `force` only apply when no file exists.
+[[redirects]]
+  from = "/data/*"
+  to = "/404.html"
+  status = 404
+
+# SPA fallback: deep links like /archive or /play/2026-11-19 load the app with HTTP 200.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Same security headers as the Node API (apps/api/src/app.ts).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Cross-Origin-Opener-Policy = "same-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
+
+# Hashed Vite assets never change.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Round data changes with each daily rebuild: always revalidate.
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
