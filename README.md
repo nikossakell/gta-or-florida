@@ -37,6 +37,42 @@ npm run ci           # όλα τα παραπάνω
 
 ---
 
+## Deployment στο GitHub Pages
+
+**Δεν χρειάζεται `index.html` στη ρίζα του repo.** Αυτό απαιτείται μόνο στο «Deploy from a branch» (που σερβίρει αυτούσιο το `/` ή το `/docs`). Εδώ χρησιμοποιείται το workflow `.github/workflows/pages.yml`, που κάνει build και ανεβάζει τον φάκελο `apps/web/dist-pages` ως Pages artifact.
+
+Ρύθμιση (μία φορά): **Settings → Pages → Build and deployment → Source: GitHub Actions**. Μετά από κάθε push στο `main` γίνεται deploy στο `https://<user>.github.io/<repo>/`.
+
+Πώς λειτουργεί χωρίς server:
+
+- `vite build --mode pages` → ο client διαβάζει pre-generated JSON αντί για `/api` (`apps/web/src/api/static.ts`, ίδιο interface με τον HTTP client).
+- `scripts/build-pages.ts` κάνει validate το content και γράφει:
+  - `data/challenge/<date>.json`: μόνο public questions (χωρίς answers/explanations/sources, positional IDs)
+  - `data/reveal/<date>/h1..h5.json`: ένα αρχείο ανά ερώτηση, που φορτώνεται **μόνο αφού απαντηθεί**
+  - `data/archive.json`, `404.html` (αντίγραφο του `index.html` για deep links όπως `/archive`) και `.nojekyll`
+- Το base path (`/<repo>/`) έρχεται αυτόματα από το `actions/configure-pages` (`BASE_PATH`), και το share URL από το `base_url`.
+- **Daily rebuild (cron 00:07 UTC):** δημοσιεύονται μόνο οι ημέρες ≤ σήμερα (μέσα στο archive window). Οι μελλοντικοί γύροι δεν υπάρχουν καν στο site μέχρι να έρθει η μέρα τους. Αν το cron καθυστερήσει, οι παίκτες βλέπουν «No headlines today».
+
+Trade-offs του static mode:
+
+- Οι απαντήσεις των ήδη δημοσιευμένων ημερών είναι δημόσια αρχεία· κάποιος που επιμένει μπορεί να τις ανοίξει. Είναι ισοδύναμο με το per-question reveal endpoint του API, και το brief θεωρεί το cheating resistance εκτός scope. Αν χρειαστεί περισσότερη προστασία, χρησιμοποιήστε το Node API (`npm run build && npm start`) σε host με server.
+- Τα deep links (π.χ. reload στο `/archive`) σερβίρονται μέσω `404.html`, άρα με HTTP status 404, ενώ η εφαρμογή φορτώνει κανονικά. Αυτός είναι γνωστός περιορισμός του GitHub Pages.
+- Δεν υπάρχουν custom headers (CSP, rate limiting): αυτά ισχύουν μόνο στο Node API.
+- Τα scheduled workflows απενεργοποιούνται από το GitHub μετά από 60 ημέρες χωρίς activity στο repo· τότε χρειάζεται re-enable στο tab Actions.
+- Τα sample data είναι placeholders, και το workflow τα επιτρέπει με default `ALLOW_PLACEHOLDER_CONTENT=true`. Όταν μπουν πραγματικές ερωτήσεις, ορίστε το repository variable `ALLOW_PLACEHOLDER_CONTENT=false`.
+
+Τοπικά:
+
+```bash
+npm run build:pages          # → apps/web/dist-pages (base "/")
+npm run preview:pages        # vite preview του static build
+BASE_PATH=/gta-or-florida npm run build:pages   # όπως στο GitHub Pages
+```
+
+Το Pages build πηγαίνει στο `dist-pages/`, ξεχωριστά από το `dist/`, ώστε ο Node server να μη σερβίρει ποτέ κατά λάθος τα static answer files.
+
+---
+
 ## Δομή (TypeScript monorepo, npm workspaces)
 
 ```text
@@ -57,10 +93,12 @@ apps/web/             React 19 + Vite + Tailwind CSS v4 + TanStack Query + TanSt
   src/features/game/    session state machine, timer, question/reveal/time-up views
   src/components/       UI primitives, εικονίδια, πρωτότυπο gator SVG
   src/lib/              localStorage, share/copy, formatting
+  src/api/              HTTP client (Node API) + static client (GitHub Pages)
 scripts/              Τοπικά CLI εργαλεία (ingestion/validation/scheduling)
   import-gdelt.ts       GDELT DOC 2.0 → questions.candidates.json (ποτέ auto-publish)
   validate-questions.ts CI gate
   build-daily-schedule.ts
+  build-pages.ts        static data + 404.html για GitHub Pages
 data/
   questions.approved.json   approved question bank (μόνο αυτό είναι playable)
   questions.candidates.json candidate queue από ingestion (μη playable)

@@ -3,7 +3,9 @@ export type ShareOutcome = 'shared' | 'copied' | 'cancelled' | 'failed';
 export function publicUrl(): string {
   const configured = import.meta.env.VITE_PUBLIC_URL;
   if (configured) return configured;
-  return typeof window !== 'undefined' ? window.location.origin : '';
+  if (typeof window === 'undefined') return '';
+  // Include the base path so project sites (user.github.io/repo/) share the right link.
+  return new URL(import.meta.env.BASE_URL, window.location.origin).href.replace(/\/$/, '');
 }
 
 function legacyCopy(text: string): boolean {

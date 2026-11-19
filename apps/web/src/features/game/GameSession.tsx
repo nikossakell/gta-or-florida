@@ -1,7 +1,7 @@
 import type { Answer, ChallengeResponse, FinishResponse } from '@gof/core';
 import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
-import { api, ApiError } from '../../api/client.ts';
+import { api, ApiError } from '../../api/index.ts';
 import { clearProgress, getProgress, saveProgress, saveResult, type PlayMode, type StoredResult } from '../../lib/storage.ts';
 import { GameHeader } from './GameHeader.tsx';
 import { QuestionView } from './QuestionView.tsx';

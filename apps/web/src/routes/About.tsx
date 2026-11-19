@@ -61,7 +61,7 @@ export function About() {
       </Section>
 
       <Section title="Privacy">
-        <p>No accounts, no tracking cookies, no analytics. Your results, streak and in-progress round are saved in this browser’s local storage and never sent anywhere. Answers you submit are checked by our server and not stored.</p>
+        <p>No accounts, no tracking cookies, no analytics. Your results, streak and in-progress round are saved in this browser’s local storage and never sent anywhere. Your answers are never stored anywhere but this browser.</p>
         <Button
           variant="secondary"
           className="mt-2 w-full"

@@ -59,7 +59,13 @@ const aboutRoute = createRoute({ getParentRoute: () => rootRoute, path: '/about'
 const routeTree = rootRoute.addChildren([indexRoute, playTodayRoute, playDateRoute, resultsRoute, archiveRoute, aboutRoute]);
 
 export function createAppRouter() {
-  return createRouter({ routeTree, defaultPreload: 'intent', scrollRestoration: true });
+  return createRouter({
+    routeTree,
+    // Serve from a sub-path such as https://user.github.io/gta-or-florida/
+    basepath: import.meta.env.BASE_URL.replace(/\/+$/, '') || '/',
+    defaultPreload: 'intent',
+    scrollRestoration: true,
+  });
 }
 
 declare module '@tanstack/react-router' {

@@ -17,6 +17,8 @@
     "dev:api": "npm run dev -w @gof/api",
     "dev:web": "npm run dev -w @gof/web",
     "build": "npm run build -w @gof/web && npm run build -w @gof/api",
+    "build:pages": "npm run build:pages -w @gof/web && tsx scripts/build-pages.ts",
+    "preview:pages": "npm run preview -w @gof/web -- --mode pages",
     "start": "node --env-file-if-exists=.env apps/api/dist/server.js",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",

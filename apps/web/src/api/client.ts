@@ -30,7 +30,7 @@ export class ApiError extends Error {
 
 const TIMEOUT_MS = 10_000;
 
-function withTimeout(signal?: AbortSignal | null): AbortSignal {
+export function withTimeout(signal?: AbortSignal | null): AbortSignal {
   const timeout = AbortSignal.timeout(TIMEOUT_MS);
   if (!signal) return timeout;
   return typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal;
@@ -64,7 +64,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-export const api = {
+/** Talks to the Node API (apps/api). */
+export const httpApi = {
   challenge: (id: 'today' | string, signal?: AbortSignal) =>
     request<ChallengeResponse>(`/api/challenge/${encodeURIComponent(id)}`, signal ? { signal } : {}),
   archive: (signal?: AbortSignal) => request<ArchiveResponse>('/api/archive', signal ? { signal } : {}),
