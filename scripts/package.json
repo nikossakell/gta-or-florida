@@ -1,0 +1,13 @@
+{
+  "name": "@gof/scripts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Local CLI ingestion, validation and scheduling tools. Never run in the browser.",
+  "dependencies": {
+    "@gof/core": "*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

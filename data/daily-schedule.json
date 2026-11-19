@@ -1,0 +1,482 @@
+{
+  "version": 1,
+  "epoch": "2026-11-12",
+  "size": 5,
+  "cooldownDays": 180,
+  "seed": "gta-or-florida",
+  "days": [
+    {
+      "date": "2026-11-12",
+      "number": 1,
+      "challengeId": "2026-11-12",
+      "questionIds": [
+        "sample-gta-04",
+        "sample-fl-15",
+        "sample-gta-01",
+        "sample-fl-23",
+        "sample-gta-12"
+      ]
+    },
+    {
+      "date": "2026-11-13",
+      "number": 2,
+      "challengeId": "2026-11-13",
+      "questionIds": [
+        "sample-fl-18",
+        "sample-gta-16",
+        "sample-fl-14",
+        "sample-gta-22",
+        "sample-fl-20"
+      ]
+    },
+    {
+      "date": "2026-11-14",
+      "number": 3,
+      "challengeId": "2026-11-14",
+      "questionIds": [
+        "sample-fl-25",
+        "sample-fl-02",
+        "sample-gta-09",
+        "sample-gta-15",
+        "sample-fl-22"
+      ]
+    },
+    {
+      "date": "2026-11-15",
+      "number": 4,
+      "challengeId": "2026-11-15",
+      "questionIds": [
+        "sample-gta-21",
+        "sample-fl-12",
+        "sample-fl-11",
+        "sample-gta-17",
+        "sample-gta-03"
+      ]
+    },
+    {
+      "date": "2026-11-16",
+      "number": 5,
+      "challengeId": "2026-11-16",
+      "questionIds": [
+        "sample-gta-05",
+        "sample-gta-08",
+        "sample-fl-05",
+        "sample-gta-19",
+        "sample-fl-21"
+      ]
+    },
+    {
+      "date": "2026-11-17",
+      "number": 6,
+      "challengeId": "2026-11-17",
+      "questionIds": [
+        "sample-gta-10",
+        "sample-fl-04",
+        "sample-gta-25",
+        "sample-fl-06",
+        "sample-fl-16"
+      ]
+    },
+    {
+      "date": "2026-11-18",
+      "number": 7,
+      "challengeId": "2026-11-18",
+      "questionIds": [
+        "sample-fl-03",
+        "sample-gta-06",
+        "sample-gta-11",
+        "sample-fl-19",
+        "sample-gta-07"
+      ]
+    },
+    {
+      "date": "2026-11-19",
+      "number": 8,
+      "challengeId": "2026-11-19",
+      "questionIds": [
+        "sample-gta-13",
+        "sample-gta-24",
+        "sample-fl-09",
+        "sample-fl-07",
+        "sample-fl-13"
+      ]
+    },
+    {
+      "date": "2026-11-20",
+      "number": 9,
+      "challengeId": "2026-11-20",
+      "questionIds": [
+        "sample-fl-24",
+        "sample-fl-08",
+        "sample-gta-23",
+        "sample-gta-18",
+        "sample-gta-14"
+      ]
+    },
+    {
+      "date": "2026-11-21",
+      "number": 10,
+      "challengeId": "2026-11-21",
+      "questionIds": [
+        "sample-fl-01",
+        "sample-gta-02",
+        "sample-gta-20",
+        "sample-fl-10",
+        "sample-fl-17"
+      ]
+    }
+  ],
+  "usage": {
+    "sample-fl-01": {
+      "questionId": "sample-fl-01",
+      "canonicalEventId": "sample-fl-01",
+      "lastPublishedAt": "2026-11-21",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-02": {
+      "questionId": "sample-fl-02",
+      "canonicalEventId": "sample-fl-02",
+      "lastPublishedAt": "2026-11-14",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-03": {
+      "questionId": "sample-fl-03",
+      "canonicalEventId": "sample-fl-03",
+      "lastPublishedAt": "2026-11-18",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-04": {
+      "questionId": "sample-fl-04",
+      "canonicalEventId": "sample-fl-04",
+      "lastPublishedAt": "2026-11-17",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-05": {
+      "questionId": "sample-fl-05",
+      "canonicalEventId": "sample-fl-05",
+      "lastPublishedAt": "2026-11-16",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-06": {
+      "questionId": "sample-fl-06",
+      "canonicalEventId": "sample-fl-06",
+      "lastPublishedAt": "2026-11-17",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-07": {
+      "questionId": "sample-fl-07",
+      "canonicalEventId": "sample-fl-07",
+      "lastPublishedAt": "2026-11-19",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-08": {
+      "questionId": "sample-fl-08",
+      "canonicalEventId": "sample-fl-08",
+      "lastPublishedAt": "2026-11-20",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-09": {
+      "questionId": "sample-fl-09",
+      "canonicalEventId": "sample-fl-09",
+      "lastPublishedAt": "2026-11-19",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-10": {
+      "questionId": "sample-fl-10",
+      "canonicalEventId": "sample-fl-10",
+      "lastPublishedAt": "2026-11-21",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-11": {
+      "questionId": "sample-fl-11",
+      "canonicalEventId": "sample-fl-11",
+      "lastPublishedAt": "2026-11-15",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-12": {
+      "questionId": "sample-fl-12",
+      "canonicalEventId": "sample-fl-12",
+      "lastPublishedAt": "2026-11-15",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-13": {
+      "questionId": "sample-fl-13",
+      "canonicalEventId": "sample-fl-13",
+      "lastPublishedAt": "2026-11-19",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-14": {
+      "questionId": "sample-fl-14",
+      "canonicalEventId": "sample-fl-14",
+      "lastPublishedAt": "2026-11-13",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-15": {
+      "questionId": "sample-fl-15",
+      "canonicalEventId": "sample-fl-15",
+      "lastPublishedAt": "2026-11-12",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-16": {
+      "questionId": "sample-fl-16",
+      "canonicalEventId": "sample-fl-16",
+      "lastPublishedAt": "2026-11-17",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-17": {
+      "questionId": "sample-fl-17",
+      "canonicalEventId": "sample-fl-17",
+      "lastPublishedAt": "2026-11-21",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-18": {
+      "questionId": "sample-fl-18",
+      "canonicalEventId": "sample-fl-18",
+      "lastPublishedAt": "2026-11-13",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-19": {
+      "questionId": "sample-fl-19",
+      "canonicalEventId": "sample-fl-19",
+      "lastPublishedAt": "2026-11-18",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-20": {
+      "questionId": "sample-fl-20",
+      "canonicalEventId": "sample-fl-20",
+      "lastPublishedAt": "2026-11-13",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-21": {
+      "questionId": "sample-fl-21",
+      "canonicalEventId": "sample-fl-21",
+      "lastPublishedAt": "2026-11-16",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-22": {
+      "questionId": "sample-fl-22",
+      "canonicalEventId": "sample-fl-22",
+      "lastPublishedAt": "2026-11-14",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-23": {
+      "questionId": "sample-fl-23",
+      "canonicalEventId": "sample-fl-23",
+      "lastPublishedAt": "2026-11-12",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-24": {
+      "questionId": "sample-fl-24",
+      "canonicalEventId": "sample-fl-24",
+      "lastPublishedAt": "2026-11-20",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-fl-25": {
+      "questionId": "sample-fl-25",
+      "canonicalEventId": "sample-fl-25",
+      "lastPublishedAt": "2026-11-14",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-01": {
+      "questionId": "sample-gta-01",
+      "canonicalEventId": "sample-gta-01",
+      "lastPublishedAt": "2026-11-12",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-02": {
+      "questionId": "sample-gta-02",
+      "canonicalEventId": "sample-gta-02",
+      "lastPublishedAt": "2026-11-21",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-03": {
+      "questionId": "sample-gta-03",
+      "canonicalEventId": "sample-gta-03",
+      "lastPublishedAt": "2026-11-15",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-04": {
+      "questionId": "sample-gta-04",
+      "canonicalEventId": "sample-gta-04",
+      "lastPublishedAt": "2026-11-12",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-05": {
+      "questionId": "sample-gta-05",
+      "canonicalEventId": "sample-gta-05",
+      "lastPublishedAt": "2026-11-16",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-06": {
+      "questionId": "sample-gta-06",
+      "canonicalEventId": "sample-gta-06",
+      "lastPublishedAt": "2026-11-18",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-07": {
+      "questionId": "sample-gta-07",
+      "canonicalEventId": "sample-gta-07",
+      "lastPublishedAt": "2026-11-18",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-08": {
+      "questionId": "sample-gta-08",
+      "canonicalEventId": "sample-gta-08",
+      "lastPublishedAt": "2026-11-16",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-09": {
+      "questionId": "sample-gta-09",
+      "canonicalEventId": "sample-gta-09",
+      "lastPublishedAt": "2026-11-14",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-10": {
+      "questionId": "sample-gta-10",
+      "canonicalEventId": "sample-gta-10",
+      "lastPublishedAt": "2026-11-17",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-11": {
+      "questionId": "sample-gta-11",
+      "canonicalEventId": "sample-gta-11",
+      "lastPublishedAt": "2026-11-18",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-12": {
+      "questionId": "sample-gta-12",
+      "canonicalEventId": "sample-gta-12",
+      "lastPublishedAt": "2026-11-12",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-13": {
+      "questionId": "sample-gta-13",
+      "canonicalEventId": "sample-gta-13",
+      "lastPublishedAt": "2026-11-19",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-14": {
+      "questionId": "sample-gta-14",
+      "canonicalEventId": "sample-gta-14",
+      "lastPublishedAt": "2026-11-20",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-15": {
+      "questionId": "sample-gta-15",
+      "canonicalEventId": "sample-gta-15",
+      "lastPublishedAt": "2026-11-14",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-16": {
+      "questionId": "sample-gta-16",
+      "canonicalEventId": "sample-gta-16",
+      "lastPublishedAt": "2026-11-13",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-17": {
+      "questionId": "sample-gta-17",
+      "canonicalEventId": "sample-gta-17",
+      "lastPublishedAt": "2026-11-15",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-18": {
+      "questionId": "sample-gta-18",
+      "canonicalEventId": "sample-gta-18",
+      "lastPublishedAt": "2026-11-20",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-19": {
+      "questionId": "sample-gta-19",
+      "canonicalEventId": "sample-gta-19",
+      "lastPublishedAt": "2026-11-16",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-20": {
+      "questionId": "sample-gta-20",
+      "canonicalEventId": "sample-gta-20",
+      "lastPublishedAt": "2026-11-21",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-21": {
+      "questionId": "sample-gta-21",
+      "canonicalEventId": "sample-gta-21",
+      "lastPublishedAt": "2026-11-15",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-22": {
+      "questionId": "sample-gta-22",
+      "canonicalEventId": "sample-gta-22",
+      "lastPublishedAt": "2026-11-13",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-23": {
+      "questionId": "sample-gta-23",
+      "canonicalEventId": "sample-gta-23",
+      "lastPublishedAt": "2026-11-20",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-24": {
+      "questionId": "sample-gta-24",
+      "canonicalEventId": "sample-gta-24",
+      "lastPublishedAt": "2026-11-19",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    },
+    "sample-gta-25": {
+      "questionId": "sample-gta-25",
+      "canonicalEventId": "sample-gta-25",
+      "lastPublishedAt": "2026-11-17",
+      "timesPublished": 1,
+      "approvedAt": "2026-11-18"
+    }
+  },
+  "generatedAt": "2026-11-18T23:50:48.726Z"
+}

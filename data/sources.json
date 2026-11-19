@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "notes": [
+    "Discovery sources for the candidate queue. Nothing found here is ever published automatically.",
+    "GDELT DOC 2.0 returns news metadata (title, URL, domain, date), not licensed article text.",
+    "Every query is combined with the operators in gdelt.queryOperators. Boolean OR blocks cannot be nested (GDELT docs).",
+    "Add an RSS feed only after confirming its URL, current availability, robots/terms and reuse conditions."
+  ],
+  "gdelt": {
+    "endpoint": "https://api.gdeltproject.org/api/v2/doc/doc",
+    "attribution": "https://www.gdeltproject.org/",
+    "documentation": "https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/",
+    "minDelaySeconds": 5,
+    "maxRecords": 100,
+    "timespan": "2w",
+    "sort": "DateDesc",
+    "queryOperators": "sourcelang:english",
+    "queriesPerRun": 3,
+    "batches": [
+      { "id": "florida-man-gator", "query": "\"Florida man\" (alligator OR gator OR crocodile)" },
+      { "id": "florida-woman", "query": "\"Florida woman\" (bizarre OR arrested OR deputies)" },
+      { "id": "florida-wildlife", "query": "Florida (iguana OR python OR crocodile OR manatee) incident" },
+      { "id": "florida-vehicles", "query": "Florida (\"golf cart\" OR lawnmower OR airboat) police" },
+      { "id": "florida-drive-thru", "query": "Florida (\"drive-thru\" OR \"convenience store\") deputies" },
+      { "id": "florida-costume", "query": "Florida (costume OR inflatable OR mascot) arrested" },
+      { "id": "miami-weird", "query": "Miami (bizarre OR unusual OR strange) police" },
+      { "id": "tampa-weird", "query": "Tampa (bizarre OR unusual OR strange) deputies" },
+      { "id": "orlando-weird", "query": "Orlando (bizarre OR unusual OR strange) police" },
+      { "id": "jacksonville-weird", "query": "Jacksonville (bizarre OR unusual OR strange) police" },
+      { "id": "keywest-weird", "query": "\"Key West\" (bizarre OR unusual OR arrested)" },
+      { "id": "fortlauderdale-weird", "query": "\"Fort Lauderdale\" (bizarre OR unusual OR arrested)" }
+    ]
+  },
+  "domains": {
+    "blocked": {
+      "reason": "Satire / parody publishers: never a source of real events.",
+      "list": ["theonion.com", "babylonbee.com", "clickhole.com", "thehardtimes.net", "waterfordwhispersnews.com", "newsthump.com", "dailymash.co.uk"]
+    },
+    "floridaHints": {
+      "reason": "Heuristic only — a Florida-based outlet makes a local story more likely. The reviewer must still confirm the event happened in Florida.",
+      "list": [
+        "miamiherald.com", "tampabay.com", "orlandosentinel.com", "sun-sentinel.com", "palmbeachpost.com",
+        "jacksonville.com", "tallahassee.com", "news-press.com", "heraldtribune.com", "floridatoday.com",
+        "tcpalm.com", "pnj.com", "naplesnews.com", "gainesville.com", "theledger.com", "wfla.com",
+        "wtsp.com", "fox13news.com", "wesh.com", "clickorlando.com", "wsvn.com", "local10.com",
+        "nbcmiami.com", "wpbf.com", "news4jax.com", "actionnewsjax.com", "firstcoastnews.com", "keysweekly.com"
+      ]
+    }
+  },
+  "floridaPlaceNames": [
+    "florida", "fla", "miami", "tampa", "orlando", "jacksonville", "tallahassee", "key west", "fort lauderdale",
+    "st. petersburg", "st petersburg", "clearwater", "sarasota", "naples", "fort myers", "gainesville",
+    "pensacola", "daytona", "palm beach", "boca raton", "hialeah", "kissimmee", "ocala", "lakeland",
+    "melbourne", "panama city", "everglades", "florida keys", "brevard", "pinellas", "hillsborough",
+    "broward", "volusia", "polk county", "lee county", "collier county", "osceola", "seminole county"
+  ],
+  "rss": []
+}

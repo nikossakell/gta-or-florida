@@ -1,0 +1,13 @@
+{
+  "name": "@gof/core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared domain model, validation, deduplication and deterministic scheduling.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

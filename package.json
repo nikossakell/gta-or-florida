@@ -1,0 +1,36 @@
+{
+  "name": "gta-or-florida",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "GTA or Florida? \u2014 a daily trivia game: real Florida news or a fictional GTA-style scenario?",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "scripts"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c magenta,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @gof/api",
+    "dev:web": "npm run dev -w @gof/web",
+    "build": "npm run build -w @gof/web && npm run build -w @gof/api",
+    "start": "node --env-file-if-exists=.env apps/api/dist/server.js",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "validate": "tsx scripts/validate-questions.ts",
+    "schedule:build": "tsx scripts/build-daily-schedule.ts",
+    "import:gdelt": "tsx scripts/import-gdelt.ts",
+    "ci": "npm run typecheck && npm run test && npm run validate"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "concurrently": "^10.0.7",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}
