@@ -1,15 +1,15 @@
 /**
  * Source-link verification with SSRF protection.
  *
- * Only URLs already stored in our own database are ever checked (never a URL
- * from a request body). Every hop is https, its DNS answer must be a public
- * unicast address (checked inside the socket's lookup, so there is no
- * resolve-then-connect gap for DNS rebinding), and redirects are followed
- * manually with the same checks, up to a small limit. Bodies are not read.
+ * Node-only transport for the runtime-neutral checker in url-safety.ts: every
+ * hop's DNS answer must be a public unicast address (checked inside the
+ * socket's lookup, so there is no resolve-then-connect gap for DNS rebinding).
+ * Shape rules and the manual redirect walk live in url-safety.ts. Bodies are not read.
  */
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
 import { request } from 'node:https';
 import { BlockList, isIP } from 'node:net';
+import { checkLinkWith, toLinkCheck, unsafeUrlReason as baseUnsafeUrlReason, type LinkCheckResult, type LinkRequest } from './url-safety.ts';
 
 const blocked = new BlockList();
 for (const [net, prefix] of [
@@ -56,37 +56,24 @@ export function isBlockedAddress(address: string): boolean {
   return true;
 }
 
-export type LinkCheckResult =
-  | { status: 'ok'; finalUrl: string; httpStatus: number; redirects: number }
-  | { status: 'broken'; reason: string; httpStatus?: number; finalUrl?: string };
+export type { LinkCheckResult };
+export { toLinkCheck };
 
 export type LinkCheckOptions = {
   timeoutMs?: number;
   maxRedirects?: number;
   userAgent?: string;
   /** Test seam: replaces the network request. */
-  requestImpl?: (url: URL, method: 'HEAD' | 'GET') => Promise<{ status: number; location?: string }>;
+  requestImpl?: LinkRequest;
 };
 
-/** Validates the URL shape before any network access. Returns an error message or null. */
+/** Shape check with Node's BlockList refining the message for IP literals. */
 export function unsafeUrlReason(raw: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return 'not a valid URL';
-  }
-  if (url.protocol !== 'https:') return 'only https links are checked automatically (use --link-verified-manually after opening it yourself)';
-  if (url.username || url.password) return 'credentials in URL';
-  if (url.port && url.port !== '443') return 'non-standard port';
-  const host = url.hostname.replace(/^\[|\]$/g, '');
-  if (isIP(host) && isBlockedAddress(host)) return 'private or reserved address';
-  if (isIP(host)) return 'bare IP addresses are not accepted as sources';
-  if (/^(localhost|.*\.local|.*\.internal|.*\.localhost)$/i.test(host)) return 'local hostname';
-  return null;
+  return baseUnsafeUrlReason(raw, isBlockedAddress);
 }
 
-function safeLookup(
+/** DNS lookup for node:https that refuses any non-public answer (used as the socket's `lookup`, so no rebinding gap). */
+export function safeLookup(
   hostname: string,
   options: { all?: boolean; family?: number },
   callback: (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void,
@@ -129,42 +116,8 @@ function nodeRequest(url: URL, method: 'HEAD' | 'GET', timeoutMs: number, userAg
 }
 
 export async function checkLink(raw: string, opts: LinkCheckOptions = {}): Promise<LinkCheckResult> {
-  const maxRedirects = opts.maxRedirects ?? 5;
   const timeoutMs = opts.timeoutMs ?? 12_000;
   const userAgent = opts.userAgent ?? 'gta-or-florida-linkcheck/0.2';
   const send = opts.requestImpl ?? ((u: URL, m: 'HEAD' | 'GET') => nodeRequest(u, m, timeoutMs, userAgent));
-
-  let current = raw;
-  for (let hop = 0; hop <= maxRedirects; hop++) {
-    const reason = unsafeUrlReason(current);
-    if (reason) return { status: 'broken', reason: hop ? `redirect target rejected: ${reason}` : reason, finalUrl: current };
-    const url = new URL(current);
-    let res: { status: number; location?: string };
-    try {
-      res = await send(url, 'HEAD');
-      // Many publishers reject HEAD; retry once with GET (body is not read).
-      if (res.status === 405 || res.status === 403 || res.status === 501) res = await send(url, 'GET');
-    } catch (error) {
-      return { status: 'broken', reason: (error as Error).message, finalUrl: current };
-    }
-    if (res.status >= 300 && res.status < 400 && res.location) {
-      current = new URL(res.location, url).toString();
-      continue;
-    }
-    if (res.status >= 200 && res.status < 300) return { status: 'ok', finalUrl: current, httpStatus: res.status, redirects: hop };
-    return { status: 'broken', reason: `HTTP ${res.status}`, httpStatus: res.status, finalUrl: current };
-  }
-  return { status: 'broken', reason: `more than ${maxRedirects} redirects` };
-}
-
-/** Convert a network check into the import contract's LinkCheck (https final URLs only). */
-export function toLinkCheck(r: LinkCheckResult, now: Date = new Date()): import('@gof/core').LinkCheck {
-  const finalUrl = r.finalUrl && /^https:\/\//.test(r.finalUrl) ? r.finalUrl.slice(0, 2048) : null;
-  return {
-    status: r.status === 'ok' ? 'ok' : 'broken',
-    httpStatus: r.httpStatus ?? null,
-    finalUrl,
-    checkedAt: now.toISOString(),
-    ...(r.status === 'broken' ? { note: r.reason.slice(0, 200) } : {}),
-  };
+  return checkLinkWith(raw, send, { maxRedirects: opts.maxRedirects, isBlockedIp: isBlockedAddress });
 }

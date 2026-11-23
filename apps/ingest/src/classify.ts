@@ -35,6 +35,56 @@ const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
 type FetchFn = (url: string, init: RequestInit) => Promise<Response>;
 
+/** Normalize a Workers AI result (`response` or OpenAI-style `choices`) + usage. */
+function completionFrom(r: Record<string, unknown>, messages: AiMessage[]): AiCompletion {
+  const choice = (r.choices as { message?: { content?: unknown } }[] | undefined)?.[0]?.message?.content;
+  const raw = r.response ?? choice;
+  const text = typeof raw === 'string' ? raw : raw === undefined || raw === null ? '' : JSON.stringify(raw);
+  const usage = (r.usage ?? {}) as { prompt_tokens?: number; completion_tokens?: number };
+  const prompt = messages.map((m) => m.content).join('\n');
+  return {
+    text,
+    tokensIn: Number.isFinite(usage.prompt_tokens) ? usage.prompt_tokens! : estimateTokens(prompt),
+    tokensOut: Number.isFinite(usage.completion_tokens) ? usage.completion_tokens! : estimateTokens(text),
+  };
+}
+
+/** Gemma documents max_completion_tokens (max_tokens is deprecated there); Granite documents max_tokens. */
+const tokenLimit = (model: string, maxTokens: number) => (model === AI_MODELS.extract ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens });
+
+/** Minimal shape of the Workers `env.AI` binding used here. */
+export type AiBinding = { run(model: string, input: Record<string, unknown>, options?: Record<string, unknown>): Promise<unknown> };
+
+/** Workers AI through the Worker's `AI` binding (no API token). Same parsing, budget and errors as REST. */
+export function createWorkersAiBindingProvider(ai: AiBinding, opts: { timeoutMs?: number } = {}): AiProvider {
+  const timeoutMs = opts.timeoutMs ?? AI_DEFAULT_BUDGET.timeoutMs;
+  return {
+    name: 'workers-ai-binding',
+    async run(model, messages, maxTokens) {
+      let result: unknown;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        result = await Promise.race([
+          ai.run(model, { messages, temperature: 0, ...tokenLimit(model, maxTokens) }),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new AiError('timeout', `Workers AI timed out after ${timeoutMs}ms`)), timeoutMs);
+          }),
+        ]);
+      } catch (error) {
+        if (error instanceof AiError) throw error;
+        const msg = (error as Error)?.message ?? String(error);
+        // Daily free allocation / rate limits surface as errors from the binding.
+        if (/neuron|quota|limit|capacity|429|4006/i.test(msg)) throw new AiError('quota', `Workers AI: ${msg}`.slice(0, 300));
+        throw new AiError('http', `Workers AI: ${msg}`.slice(0, 300));
+      } finally {
+        clearTimeout(timer);
+      }
+      if (typeof result !== 'object' || result === null) throw new AiError('bad_response', 'Workers AI returned no result object');
+      return completionFrom(result as Record<string, unknown>, messages);
+    },
+  };
+}
+
 /** Official REST endpoint: POST /client/v4/accounts/{account_id}/ai/run/{model}. */
 export function createWorkersAiProvider(opts: { accountId: string; apiToken: string; timeoutMs?: number; fetchImpl?: FetchFn }): AiProvider {
   if (!/^[a-f0-9]{32}$/i.test(opts.accountId)) throw new Error('CF_AI_ACCOUNT_ID must be a 32-character Cloudflare account id');
@@ -45,8 +95,7 @@ export function createWorkersAiProvider(opts: { accountId: string; apiToken: str
     name: 'workers-ai',
     async run(model, messages, maxTokens) {
       const url = `https://api.cloudflare.com/client/v4/accounts/${opts.accountId}/ai/run/${model}`;
-      // Gemma documents max_completion_tokens (max_tokens is deprecated there); Granite documents max_tokens.
-      const limit = model === AI_MODELS.extract ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens };
+      const limit = tokenLimit(model, maxTokens);
       let res: Response;
       try {
         res = await fetchImpl(url, {
@@ -66,17 +115,7 @@ export function createWorkersAiProvider(opts: { accountId: string; apiToken: str
         if (/neuron|quota|limit|capacity/i.test(msg) && res.status >= 400) throw new AiError('quota', `Workers AI: ${msg}`);
         throw new AiError(res.status >= 500 ? 'http' : 'bad_response', `Workers AI: ${msg}`.slice(0, 300));
       }
-      const r = body.result;
-      const choice = (r.choices as { message?: { content?: unknown } }[] | undefined)?.[0]?.message?.content;
-      const raw = r.response ?? choice;
-      const text = typeof raw === 'string' ? raw : raw === undefined || raw === null ? '' : JSON.stringify(raw);
-      const usage = (r.usage ?? {}) as { prompt_tokens?: number; completion_tokens?: number };
-      const prompt = messages.map((m) => m.content).join('\n');
-      return {
-        text,
-        tokensIn: Number.isFinite(usage.prompt_tokens) ? usage.prompt_tokens! : estimateTokens(prompt),
-        tokensOut: Number.isFinite(usage.completion_tokens) ? usage.completion_tokens! : estimateTokens(text),
-      };
+      return completionFrom(body.result, messages);
     },
   };
 }
@@ -122,6 +161,11 @@ export type Budget = {
   stopped: string | null;
   models: Set<string>;
 };
+
+/** Serializable budget state (Workflow steps persist plain JSON, not Sets). */
+export type BudgetSnapshot = Omit<Budget, 'models'> & { models: string[] };
+export const snapshotBudget = (b: Budget): BudgetSnapshot => ({ ...b, models: [...b.models] });
+export const restoreBudget = (s: BudgetSnapshot): Budget => ({ ...s, models: new Set(s.models) });
 
 export function createBudget(maxRequests: number = AI_DEFAULT_BUDGET.maxRequestsPerRun, maxNeurons: number = AI_DEFAULT_BUDGET.maxNeuronsPerRun): Budget {
   return { maxRequests, maxNeurons, requests: 0, neurons: 0, tokensIn: 0, tokensOut: 0, stopped: null, models: new Set() };

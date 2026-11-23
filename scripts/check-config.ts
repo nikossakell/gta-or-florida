@@ -38,6 +38,29 @@ const ids = dbs.map((d) => d.db?.database_id).filter((id) => id && !id.startsWit
 if (new Set(names).size !== names.length) problems.push('wrangler envs share a D1 database_name');
 if (new Set(ids).size !== ids.length) problems.push('wrangler envs share a D1 database_id (staging and production must be isolated)');
 
+// 2b. ingestion Worker: each env talks only to its own API Worker; Workflow names are account-global
+type IngestEnv = { vars?: Record<string, string>; services?: { binding: string; service: string }[]; workflows?: { name: string }[]; d1_databases?: unknown[]; triggers?: { crons?: string[] } };
+const ingest = JSON.parse(stripJsonc(readFileSync(resolve(ROOT, 'apps/ingest-worker/wrangler.jsonc'), 'utf8'))) as { env: Record<string, IngestEnv> };
+const wfNames: string[] = [];
+for (const [env, cfg] of Object.entries(ingest.env)) {
+  const vars = cfg.vars ?? {};
+  if (vars.APP_ENV !== env) problems.push(`ingest wrangler env ${env}: APP_ENV must be "${env}"`);
+  const api = cfg.services?.find((s) => s.binding === 'API')?.service;
+  if (api !== `gta-florida-api-${env}`) problems.push(`ingest wrangler env ${env}: API service binding must be gta-florida-api-${env} (got ${api ?? 'none'})`);
+  if (cfg.d1_databases?.length) problems.push(`ingest wrangler env ${env}: must not bind D1 directly (the API Worker is the only writer)`);
+  for (const w of cfg.workflows ?? []) {
+    if (!w.name.endsWith(`-${env}`)) problems.push(`ingest wrangler env ${env}: workflow name ${w.name} must end with -${env}`);
+    wfNames.push(w.name);
+  }
+  if (env !== 'local' && vars.AI_PROVIDER === 'mock') warnings.push(`ingest wrangler env ${env}: AI_PROVIDER=mock`);
+}
+if (new Set(wfNames).size !== wfNames.length) problems.push('ingest wrangler envs share a Workflow name');
+// Workers Free: 5 Cron Triggers per account (API + ingestion, staging + production).
+const cronCount = [wrangler.env, ingest.env]
+  .flatMap((envs) => Object.entries(envs).filter(([env]) => env !== 'local').map(([, cfg]) => ((cfg as IngestEnv).triggers?.crons ?? []).length))
+  .reduce((a, b) => a + b, 0);
+if (cronCount > 5) warnings.push(`${cronCount} Cron Triggers across deployed envs; Workers Free allows 5 per account`);
+
 // 3. workflows
 const wfDir = resolve(ROOT, '.github/workflows');
 const groups = new Map<string, string>();
@@ -74,7 +97,9 @@ const scan = (dir: string) => {
 };
 for (const d of ['apps/ingest/src', 'apps/web/src', 'scripts']) scan(resolve(ROOT, d));
 for (const line of readFileSync(resolve(ROOT, 'apps/worker/src/env.ts'), 'utf8').matchAll(/^\s+([A-Z][A-Z0-9_]+)\??:/gm)) used.add(line[1]!);
-const IGNORED = new Set(['GITHUB_ACTIONS', 'GITHUB_STEP_SUMMARY', 'DB', 'RATE_LIMITER', 'BASE_PATH', 'NODE_ENV']);
+for (const line of readFileSync(resolve(ROOT, 'apps/ingest-worker/src/index.ts'), 'utf8').matchAll(/^\s+([A-Z][A-Z0-9_]+)\??:/gm)) used.add(line[1]!);
+for (const m of readFileSync(resolve(ROOT, 'apps/ingest-worker/src/limits.ts'), 'utf8').matchAll(/\| '([A-Z][A-Z0-9_]+)'/g)) used.add(m[1]!);
+const IGNORED = new Set(['GITHUB_ACTIONS', 'GITHUB_STEP_SUMMARY', 'DB', 'RATE_LIMITER', 'BASE_PATH', 'NODE_ENV', 'API', 'AI', 'INGEST_WORKFLOW']);
 for (const name of used) if (!IGNORED.has(name) && !new RegExp(`\\b${name}\\b`).test(example)) problems.push(`.env.example does not document ${name}`);
 
 for (const w of warnings) console.warn(`warning: ${w}`);
@@ -82,4 +107,4 @@ if (problems.length) {
   for (const p of problems) console.error(`error: ${p}`);
   process.exit(1);
 }
-console.log(`config ok: ${REGISTRY.sources.length} sources (${approved.length} approved, policy ${REGISTRY.policyVersion}), ${dbs.length} wrangler envs, ${groups.size} workflow concurrency groups`);
+console.log(`config ok: ${REGISTRY.sources.length} sources (${approved.length} approved, policy ${REGISTRY.policyVersion}), ${dbs.length} wrangler envs, ${wfNames.length} ingestion workflows, ${cronCount} cron triggers, ${groups.size} GitHub workflow concurrency groups`);

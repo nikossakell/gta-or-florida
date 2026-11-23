@@ -13,7 +13,8 @@ export type FeedItem = { title: string; link: string; publishedAt: string | null
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
-function decode(text: string): string {
+/** CDATA/markup-stripping entity decoder for untrusted feed or page text. */
+export function decode(text: string): string {
   return text
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/<[^>]*>/g, ' ') // never keep markup from a feed

@@ -81,7 +81,9 @@ export async function handleAdmin(request: Request, env: Env, url: URL, now: () 
     await authenticate(request, env, 'service');
     const kind = url.searchParams.get('kind') ?? '';
     if (!(CONTENT_KINDS as readonly string[]).includes(kind)) throw new HttpError(400, 'BAD_REQUEST', 'kind is required');
-    return json(200, await titleIndex(db, kind, url.searchParams.get('cursor')));
+    // Optional smaller pages let CPU-bounded callers (the ingestion Workflow) scan in steps.
+    const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 500, 1), 500);
+    return json(200, await titleIndex(db, kind, url.searchParams.get('cursor'), limit));
   }
   if (path === '/checkpoints') {
     only(request, 'GET');

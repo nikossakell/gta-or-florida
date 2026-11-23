@@ -11,10 +11,10 @@
 | Κομμάτι | Πού | Τι κάνει |
 |---|---|---|
 | Frontend | Cloudflare Pages (Git integration, branch `main`) | React app, static. Μιλά με τον Worker μέσω `VITE_API_BASE_URL`. |
-| API | Cloudflare Worker `gta-florida-api-staging` / `gta-florida-api-production` | Public game + protected admin routes. Cron 00:05 & 12:30 UTC κρατά 30 ημέρες προγραμματισμένες. |
+| API | Cloudflare Worker `gta-florida-api-staging` / `gta-florida-api-production` | Public game + protected admin routes. Cron 00:05 & 12:05 UTC (ένα trigger) κρατά 30 ημέρες προγραμματισμένες. |
 | Βάση | Cloudflare D1 `gta-or-florida-staging` / `gta-or-florida-production` | Η **μόνη** production βάση. Χωριστές για staging/production. |
-| Ingestion | GitHub Actions (`ingest.yml`, 05:17 & 17:17 UTC + χειροκίνητα) | Node batch: discovery → φίλτρα → link check → Workers AI → import. |
-| AI | Workers AI REST (μόνο από GitHub Actions) | Granite (triage) → Gemma (extraction) για λίγα items. Ποτέ ανά παίκτη. |
+| Ingestion | Cloudflare Worker `gta-florida-ingest-<env>` + Workflow `gta-florida-ingest-<env>` (cron 05:17 & 17:17 UTC) | Discovery → dedupe → link check → Workers AI → import, σε μικρά βήματα (§8b). Μιλά **μόνο** με τον API Worker του ίδιου env (Service Binding). Το `ingest.yml` (GitHub Actions) αποσύρεται μετά την επικύρωση. |
+| AI | Workers AI binding (ingestion Worker)· REST μόνο από το τοπικό CLI | Granite (triage) → Gemma (extraction) για λίγα items. Ποτέ ανά παίκτη. |
 
 Δεν υπάρχει always-on server, VM, GPU, Render/Railway ή Ollama.
 
@@ -148,6 +148,58 @@ Dashboard → My Profile → API Tokens → Create Token:
    ```
    Είναι idempotent (ξανατρέξιμο χωρίς διπλότυπα). Τίποτα δεν εγκρίνεται κατά τη μεταφορά.
 4. Αν το GDELT απαντά `429` (συνέβη επανειλημμένα από το dev IP μας): είναι αναμενόμενο· ο κώδικας κάνει backoff και σταματά, και ο cursor δεν προχωρά. Το wiki λειτουργεί κανονικά.
+5. **Χειροκίνητη εισαγωγή ενός άρθρου Florida** (όταν το GDELT δίνει `429` ή τα Actions είναι μπλοκαρισμένα). Τρέχει τοπικά με το `.env` (`INGESTION_API_URL`, `INGESTION_IMPORT_TOKEN`, προαιρετικά `REVIEWER`, `CF_AI_*`):
+   ```bash
+   npm run ingest:url -- --env staging --dry-run "https://www.example-publisher.com/news/article"   # πρώτα έλεγχος
+   npm run ingest:url -- --env staging "https://www.example-publisher.com/news/article"             # import
+   ```
+   - Ίδιο pipeline με το batch: εξαγωγή μεταδεδομένων (τίτλος, canonical, ημερομηνία· **όχι** κείμενο άρθρου), dedupe απέναντι στο D1, deterministic prefilter, Workers AI, import. Το αποτέλεσμα είναι πάντα **candidate**: ο Worker δίνει στο gate τον λόγο `MANUAL_SUBMISSION` (provider `manual`), άρα ποτέ auto-approve, σε κανένα mode.
+   - Άγνωστος publisher → καταχωρείται στο D1 ως `unreviewed`. Τα δικαιώματα αλλάζουν μόνο στο `packages/config/sources.policy.json` από τον owner.
+   - Ελέγχει: μόνο `https`, port 443, όχι credentials/IP/local hostnames, όχι aggregators (Google News κ.λπ.), όχι blocked (satire) domains, όχι πηγές `blocked` ή μη-publisher (π.χ. wiki). Κάθε DNS απάντηση πρέπει να είναι public IP (μέσα στο socket lookup), κάθε redirect ξαναελέγχεται, και redirect σε άλλη πηγή απορρίπτεται (δώστε απευθείας το τελικό URL).
+   - Item που απορρίπτει το prefilter (π.χ. `SENSITIVE_TERMS`, `NO_FLORIDA_SIGNAL`) **δεν** στέλνεται, για να μην καταγραφεί μόνιμα ως rejected.
+   - `--env` (default `staging`) πρέπει να ταιριάζει με το Worker URL· production θέλει ρητά `--env production --allow-production`. `--to <url>` αντί για `INGESTION_API_URL`. `--ai mock|off` για μηδενικό κόστος AI. `--json` τυπώνει το item.
+   - Exit codes: `0` εισήχθη / υπάρχει ήδη / dry run, `1` σφάλμα, `2` άρνηση πολιτικής ή φίλτρου.
+   - Η εγγύηση `MANUAL_SUBMISSION` ισχύει όταν ο staging Worker έχει γίνει deploy με αυτή την αλλαγή· μέχρι τότε το CLI αρνείται μόνο του πηγές με `autoPublishAllowed` (σήμερα καμία).
+
+## 8b. Ingestion στο Cloudflare (Cron Trigger → Workflow) — αντικαθιστά το GitHub Actions
+
+**Τι τρέχει:** ο Worker `apps/ingest-worker` (`gta-florida-ingest-<env>`) δεν έχει public URL. Το cron (05:17 & 17:17 UTC, ένα trigger) δημιουργεί ένα Workflow instance ανά εκτέλεση (`cron-<env>-<YYYYMMDDHH>`, άρα διπλό fire δεν ξεκινά δεύτερο run). Το Workflow:
+
+1. διαβάζει τους cursors (checkpoints) από τον API Worker,
+2. discovery σε ξεχωριστά βήματα: ένα ανά **εγκεκριμένο** RSS feed· **GDELT μόνο ως fallback** όταν τα feeds δώσουν < `GDELT_MIN_RSS_ITEMS` (ένα query, 429 = καταγραφή και συνέχεια)· Grand Theft Wiki: ένα βήμα για τα members + ένα ανά σελίδα (έως `MAX_WIKI_PAGES`, σελίδες που ήδη υπάρχουν παραλείπονται πριν το fetch, συνέχεια από offset στο επόμενο run, round-robin στις κατηγορίες),
+3. exact dedupe απέναντι στο D1, **paged fuzzy dedupe** (σελίδες `SCAN_PAGE_SIZE` × `SCAN_CANDIDATES` υποψήφιοι ανά βήμα — ίδια αποτελέσματα με το CLI, ελεγμένο), plan,
+4. link check + Workers AI ανά `PROCESS_BATCH` items, με κοινό neuron budget ανά run,
+5. import σε chunks των 20 (idempotency keys)· run report + cursors μόνο με το τελευταίο chunk,
+6. inventory check (`schedule` dry run) → log `ingest.inventory_low` όταν runway < `LOW_INVENTORY_DAYS`.
+
+Ο API Worker μένει ο **μόνος** που γράφει στο D1 και εφαρμόζει source policy + gate. Τίποτα δεν εγκρίνεται αυτόματα: με `AUTO_PUBLISH_MODE=shadow` κάθε import είναι candidate· αν κάποτε επιστρέψει `approved`, γράφεται `ingest.unexpected_approval`.
+
+**Όρια Workers Free (docs 2026-11-23) και πώς τα σεβόμαστε:** 10 ms CPU ανά βήμα (μετρημένο: ~3–9 ms για scan 25×10, ~1–10 ms για μία σελίδα wiki), ≤ 50 subrequests ανά βήμα (process batch 4 → ≤ 4×6 hops + 8 AI calls), `MAX_STEPS=900` < 1.024, 3.000 steps/ημέρα (2 runs × ≤ 900). Το fuzzy dedupe μεγαλώνει γραμμικά με το απόθεμα: ~ (incidents/25) × (νέα/10) βήματα — πάνω από ~5.000 incidents ανά είδος χρειάζεται Workers Paid (τότε `SCAN_PAGE_SIZE=500`, `SCAN_CANDIDATES=200`, `PROCESS_BATCH=20`).
+
+**Observability:** Workers Logs (dashboard → Workers → `gta-florida-ingest-staging` → Logs, φίλτρο `event`): `ingest.discovered|planned|processed|imported|run|inventory_low|unexpected_approval|cron_skipped`. Instances: `npx wrangler workflows instances list gta-florida-ingest-staging` / `… describe gta-florida-ingest-staging <id>` (output = περίληψη run: steps, AI requests, neurons, errors, inventory). Ιστορικό runs + AI χρήση: `npm run admin -- stats` (`recentRuns`, `usage`).
+
+**Πρώτο deploy στο staging (με τη σειρά):**
+
+```bash
+npm run ci                                             # typecheck + tests + validate
+npm run deploy:worker:staging                          # API: /titles?limit=…, MANUAL_SUBMISSION gate, approval host check, cron "5 0,12 * * *"
+cd apps/ingest-worker
+npx wrangler secret put INGESTION_IMPORT_TOKEN --env staging   # ΙΔΙΑ τιμή με το secret του gta-florida-api-staging
+npx wrangler deploy --env staging                      # INGEST_ENABLED=false: το cron ακόμα δεν ξεκινά runs
+npx wrangler workflows trigger gta-florida-ingest-staging '{"dryRun":true,"sources":"gta"}'
+npx wrangler workflows instances describe gta-florida-ingest-staging latest
+```
+
+Ελέγξτε στο describe: `status: complete`, κανένα βήμα με `exceeded CPU` / `Too many subrequests`, `steps` < 900, `errors` κενό ή αναμενόμενο (π.χ. GDELT 429). Μετά `{"dryRun":true,"sources":"florida"}`, και μετά ένα πραγματικό run `{"sources":"all"}` και `npm run admin -- candidates:list --state candidate` (νέα items = candidates, `gate_decision` review). Μόνο τότε:
+
+```bash
+# apps/ingest-worker/wrangler.jsonc → env.staging.vars.INGEST_ENABLED = "true"
+npx wrangler deploy --env staging
+```
+
+και μετά από 1–2 επιτυχημένα scheduled runs: διαγραφή του `.github/workflows/ingest.yml` (το τοπικό `npm run ingest:batch` / `ingest:url` μένουν για debugging). **Production:** ίδια βήματα με `--env production`, μόνο όταν το αποφασίσετε· τίποτα δεν γίνεται αυτόματα.
+
+**Τοπικά:** `npm run db:migrate:local && npm run dev:ingest` (και οι δύο Workers στο workerd, local D1, mock AI)· `apps/ingest-worker/.dev.vars` με `INGESTION_IMPORT_TOKEN` (ίδιο με `apps/worker/.dev.vars`) και `INGEST_ENABLED=true`· trigger: `curl "http://localhost:8788/cdn-cgi/local/scheduled?cron=17+5,17+*+*+*"`.
 
 ## 9. Editorial review (ο κύκλος που γεμίζει το παιχνίδι)
 
@@ -185,7 +237,7 @@ npm run admin -- questions:approve --id <q> --play-title "…" --explanation "�
 
 ## 10. Scheduling
 
-- Ο Worker (cron 00:05 & 12:30 UTC) και κάθε ingest run (`--schedule`) κρατούν **30 ημέρες** μπροστά, μόνο από εγκεκριμένο απόθεμα. Οι υπάρχουσες ημέρες δεν αλλάζουν ποτέ.
+- Ο Worker (cron 00:05 & 12:05 UTC) και κάθε ingest run του CLI (`--schedule`) κρατούν **30 ημέρες** μπροστά, μόνο από εγκεκριμένο απόθεμα. Οι υπάρχουσες ημέρες δεν αλλάζουν ποτέ.
 - Πρώτη μέρα: αρκούν 3 Florida + 3 GTA εγκεκριμένες. 30 ημέρες: ~75 + 75 (2,5 ανά πλευρά ανά ημέρα).
 - Χειροκίνητα: `npm run admin -- schedule --days 30` (`--dry-run` για δοκιμή). Exit code 2 = έλλειψη/προειδοποιήσεις.
 - Το **Daily heartbeat** (`smoke.yml`, 00:40 UTC) αποτυγχάνει — και το GitHub σας ειδοποιεί — όταν δεν υπάρχει σημερινός γύρος.
@@ -204,7 +256,8 @@ Default `AUTO_PUBLISH_MODE=shadow`: το gate καταγράφει τι **θα**
 
 | Υπηρεσία | Free | Σημείωση |
 |---|---|---|
-| Workers | 100.000 requests/ημέρα, **10 ms CPU/request** (και για Cron) | Κάθε public request = 1 indexed D1 query. |
+| Workers | 100.000 requests/ημέρα, **10 ms CPU/request** (και για Cron), 50 subrequests/invocation, **5 Cron Triggers ανά λογαριασμό** | Κάθε public request = 1 indexed D1 query. Crons: API staging+production 1 το καθένα, ingestion 1 το καθένα = 4. |
+| Workflows | 1.024 steps/instance, **3.000 steps/ημέρα**, 10 ms CPU/step, 100 ταυτόχρονα instances, 3 ημέρες retention | Ένα ingestion run ≈ 20–200 steps (§8b). Επαληθευμένα 2026-11-23. |
 | D1 | 5 GB, 5M rows read/ημέρα, 100k rows written/ημέρα, 50 queries/invocation | Το import είναι 1 batch (= 1 query) ανά request. |
 | Workers AI | **10.000 neurons/ημέρα** ανά λογαριασμό | Granite 4 Micro: 1.542 neurons/M input, 10.158/M output· Gemma 4 26B-A4B: 9.091 / 27.273. Default budget ανά run: 60 requests, 2.500 neurons (≈ 2 runs/ημέρα μέσα στο free). Πάνω από το free: αποτυγχάνει (Free) ή $0,011/1.000 neurons (Paid, από $5/μήνα). |
 | Pages | static, Git builds | — |
@@ -233,9 +286,10 @@ npm run dev            # wrangler dev (local D1) + Vite
 npm run dev:seed       # placeholder fixtures μόνο για local
 npm run ci             # typecheck + tests + validate
 npm run ingest:batch -- --dry-run --ai mock --source gta    # live discovery, χωρίς import/AI κόστος
+npm run ingest:url -- --dry-run --ai off "<https-article-url>"   # ένα άρθρο, χωρίς import/AI κόστος
 ```
 
-Τα unit/integration tests δεν κάνουν ποτέ live κλήσεις (GDELT/wiki/Workers AI είναι mocked). Live έλεγχοι γίνονται μόνο ρητά (`ingest:batch`, `smoke`).
+Τα unit/integration tests δεν κάνουν ποτέ live κλήσεις (GDELT/wiki/Workers AI είναι mocked). Live έλεγχοι γίνονται μόνο ρητά (`ingest:batch`, `ingest:url`, `smoke`).
 
 ## 16. Συχνά προβλήματα
 

@@ -1,0 +1,81 @@
+// Ingestion Worker for GTA or Florida? (Cron Trigger → Workflow → API Worker via Service Binding).
+// Bindings are NOT inherited between environments, so each env declares its own.
+// Isolation: each env binds ONLY its own API Worker (which owns that env's D1); there is no D1 binding here.
+// Workflow names are account-global, so every env has a distinct one.
+// Secret (never in this file): wrangler secret put INGESTION_IMPORT_TOKEN --env <env>   (same value as that env's API Worker)
+// Cron budget: Workers Free allows 5 Cron Triggers per ACCOUNT. API staging + production use 1 each, this Worker 1 each → 4.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "gta-florida-ingest",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  // node:crypto (sha256 incident keys, idempotency keys) — no other Node APIs are used at runtime.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  // No public URL: runs are started by the cron or `wrangler workflows trigger`.
+  "workers_dev": false,
+  "env": {
+    // `npm run dev -w @gof/ingest-worker` together with the API Worker:
+    //   npx wrangler dev -c apps/worker/wrangler.jsonc -c apps/ingest-worker/wrangler.jsonc --env local
+    "local": {
+      "vars": {
+        "APP_ENV": "local",
+        "INGEST_ENABLED": "false",
+        "AI_PROVIDER": "mock",
+        "GDELT_ENABLED": "false"
+      },
+      "services": [{ "binding": "API", "service": "gta-florida-api-local" }],
+      "workflows": [{ "name": "gta-florida-ingest-local", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow" }]
+    },
+    "staging": {
+      "vars": {
+        "APP_ENV": "staging",
+        // Flip to "true" (and redeploy) only after a manual staging run is validated (README_DEPLOYMENT.md §8b).
+        "INGEST_ENABLED": "false",
+        "AI_PROVIDER": "binding",
+        // Florida: approved RSS feeds first; GDELT only when they yield fewer than GDELT_MIN_RSS_ITEMS.
+        "GDELT_ENABLED": "true",
+        "GDELT_QUERIES": "1",
+        "GDELT_MIN_RSS_ITEMS": "10",
+        // Workers Free sizing (10 ms CPU / step, 50 subrequests / invocation, 1,024 steps / instance).
+        "SCAN_PAGE_SIZE": "25",
+        "SCAN_CANDIDATES": "10",
+        "PROCESS_BATCH": "4",
+        "MAX_LINK_CHECKS": "15",
+        "MAX_WIKI_PAGES": "15",
+        "MAX_FEEDS": "5",
+        "MAX_AI_REQUESTS": "30",
+        "MAX_NEURONS": "2500",
+        "MAX_STEPS": "900"
+      },
+      "services": [{ "binding": "API", "service": "gta-florida-api-staging" }],
+      "ai": { "binding": "AI" },
+      "workflows": [{ "name": "gta-florida-ingest-staging", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow" }],
+      // 05:17 and 17:17 UTC (one Cron Trigger).
+      "triggers": { "crons": ["17 5,17 * * *"] }
+    },
+    "production": {
+      "vars": {
+        "APP_ENV": "production",
+        "INGEST_ENABLED": "false",
+        "AI_PROVIDER": "binding",
+        "GDELT_ENABLED": "true",
+        "GDELT_QUERIES": "1",
+        "GDELT_MIN_RSS_ITEMS": "10",
+        "SCAN_PAGE_SIZE": "25",
+        "SCAN_CANDIDATES": "10",
+        "PROCESS_BATCH": "4",
+        "MAX_LINK_CHECKS": "15",
+        "MAX_WIKI_PAGES": "15",
+        "MAX_FEEDS": "5",
+        "MAX_AI_REQUESTS": "30",
+        "MAX_NEURONS": "2500",
+        "MAX_STEPS": "900"
+      },
+      "services": [{ "binding": "API", "service": "gta-florida-api-production" }],
+      "ai": { "binding": "AI" },
+      "workflows": [{ "name": "gta-florida-ingest-production", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow" }],
+      "triggers": { "crons": ["17 5,17 * * *"] }
+    }
+  }
+}

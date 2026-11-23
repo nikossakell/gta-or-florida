@@ -12,6 +12,7 @@ import {
   canonicalizeUrl,
   evaluateAutoPublish,
   explanationProblems,
+  MANUAL_PROVIDER,
   parseAutoPublishMode,
   playTitleProblems,
   titleFingerprint,
@@ -208,6 +209,7 @@ export async function importBatch(batch: ImportBatch, ctx: Ctx): Promise<ImportI
         facts: {
           kind: item.kind,
           fixture,
+          manualSubmission: ref.provider === MANUAL_PROVIDER,
           source,
           linkStatus: link?.status ?? 'unchecked',
           linkCheckedAt: link?.checkedAt ?? null,

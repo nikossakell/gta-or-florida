@@ -8,6 +8,7 @@ import {
   cleanText,
   DEFAULT_WITHDRAWN_MESSAGE,
   explanationProblems,
+  hostMatches,
   playTitleProblems,
   sourceProblems,
   titleFingerprint,
@@ -16,7 +17,7 @@ import {
   type ReviewRequest,
   type WithdrawRequest,
 } from '@gof/core';
-import { DEFAULT_THRESHOLDS, POLICY_VERSION } from '@gof/config';
+import { DEFAULT_THRESHOLDS, POLICY_VERSION, sourceById } from '@gof/config';
 import type { Principal } from '../security/auth.ts';
 import { HttpError } from '../http.ts';
 import { isConstraintError, logStmt, placeholders } from '../db/repo.ts';
@@ -55,6 +56,7 @@ export type CandidateRow = {
   checked_at: string | null;
   final_url: string | null;
   source_id: string;
+  source_host: string | null;
   license_status: string;
   can_use_editorial_summary: number;
   can_display_original_title: number;
@@ -69,7 +71,7 @@ const CANDIDATE_SQL = `
          inc.id AS incident_id, inc.incident_key, inc.kind, inc.category, inc.game, inc.game_detected, inc.florida_location, inc.florida_signal,
          inc.location_verified, inc.status AS incident_status, inc.possible_duplicate_of, inc.similarity, inc.notes,
          sr.id AS reference_id, sr.provider, sr.original_url, sr.original_title, sr.publisher, sr.published_at, sr.link_status, sr.checked_at, sr.final_url,
-         s.id AS source_id, s.license_status, s.can_use_editorial_summary, s.can_display_original_title,
+         s.id AS source_id, s.canonical_host AS source_host, s.license_status, s.can_use_editorial_summary, s.can_display_original_title,
          s.reviewed_by AS source_reviewed_by, s.reviewed_at AS source_reviewed_at
     FROM questions q
     JOIN incidents inc ON inc.id = q.incident_id
@@ -116,6 +118,11 @@ export async function candidateDetails(db: D1Database, id: string) {
 export type ReviewResult = { ok: true; questionId: string; state: string } | { ok: false; errors: string[] };
 
 const LINK_FRESH_MS = 24 * 3600_000;
+
+/** Hosts of the candidate's source: the bundled registry first, else the host recorded in D1. */
+function sourceHosts(row: Pick<CandidateRow, 'source_id' | 'source_host'>): string[] {
+  return sourceById(row.source_id)?.hosts ?? (row.source_host ? [row.source_host] : []);
+}
 
 export async function review(db: D1Database, req: ReviewRequest, who: Principal, now: Date): Promise<ReviewResult> {
   const row = await getCandidate(db, req.questionId);
@@ -199,6 +206,18 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
     finalUrl = req.linkCheck.finalUrl;
   } else if (!(row.link_status === 'ok' && row.checked_at && now.getTime() - Date.parse(row.checked_at) < DEFAULT_THRESHOLDS.maxLinkAgeDays * 86_400_000)) {
     err('a fresh link check is required (the admin CLI runs one automatically)');
+  }
+  // An automated "ok" must have landed on the source itself, not wherever a redirect chain ended.
+  if (linkStatus === 'ok') {
+    const hosts = sourceHosts(row);
+    let finalHost: string | null = null;
+    try {
+      finalHost = finalUrl ? new URL(finalUrl).hostname : null;
+    } catch {
+      finalHost = null;
+    }
+    if (!finalHost) err('link check has no final URL; re-run it');
+    else if (!hostMatches(finalHost, hosts)) err(`link check ended on ${finalHost}, outside source ${row.source_id} (${hosts.join(', ')}); verify the link by hand`);
   }
   if (errors.length) return { ok: false, errors };
 

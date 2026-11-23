@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
-  "description": "Node batch ingestion (GitHub Actions): discovery, verification, Workers AI classification, authenticated import into the Worker.",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "description": "Ingestion business logic (runtime-neutral modules shared by the local CLI and the Cloudflare ingestion Workflow) + Node CLIs.",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

@@ -18,9 +18,13 @@ export type Log = { info(m: string): void; warn(m: string): void; error(m: strin
 
 export type DiscoveryResult = { items: Discovered[]; errors: string[]; checkpoints: { provider: string; key: string; value: string }[]; fetched: number; rateLimited: boolean };
 
-function floridaRecord(cfg: SourcesConfig, a: { title: string; url: string; seenAt?: string | null; publishedAt?: string | null; provider: 'gdelt' | 'rss'; guid?: string | null }): Discovered | null {
+/** Title + URL metadata → a Florida `Discovered` record (shared by GDELT, RSS and manual `ingest:url`). */
+export function floridaRecord(
+  cfg: SourcesConfig,
+  a: { title: string; url: string; canonicalUrl?: string; seenAt?: string | null; publishedAt?: string | null; provider: 'gdelt' | 'rss' | 'manual'; guid?: string | null; notes?: string | null },
+): Discovered | null {
   const title = cleanText(a.title, 400);
-  const canonicalUrl = normalizePublisherUrl(a.url);
+  const canonicalUrl = normalizePublisherUrl(a.canonicalUrl ?? a.url);
   if (!title || !canonicalUrl || !/^https:\/\//.test(a.url)) return null;
   const domain = new URL(canonicalUrl).hostname;
   const signal = createFloridaSignal(cfg)({ title, domain });
@@ -40,7 +44,7 @@ function floridaRecord(cfg: SourcesConfig, a: { title: string; url: string; seen
     wikiSection: null,
     floridaSignal: signal,
     floridaEvidence: floridaEvidence(title, cfg.floridaPlaceNames),
-    notes: null,
+    notes: a.notes ?? null,
     prefilter: prefilterFlorida({ title, domain, floridaSignal: signal, blockedDomains: cfg.domains.blocked.list }),
   };
 }
@@ -110,6 +114,52 @@ export async function discoverRss(cfg: SourcesConfig, opts: { userAgent: string;
   return out;
 }
 
+/** One page of category members resolved to target pages (redirect aliases grouped per target, API order). */
+export async function wikiTargets(client: WikiClient, category: string, cont: string | undefined): Promise<{ targets: { pageId: number; aliases: string[] }[]; next: string | null }> {
+  const { members, next } = await client.categoryMembers(category, cont);
+  const resolutions = [];
+  for (let i = 0; i < members.length; i += 50) resolutions.push(...(await client.resolve(members.slice(i, i + 50).map((m) => m.title))));
+  const targets = new Map<number, string[]>();
+  for (const r of resolutions) {
+    const aliases = targets.get(r.targetPageId) ?? [];
+    if (r.isRedirect) aliases.push(r.fragment ?? r.memberTitle);
+    targets.set(r.targetPageId, aliases);
+  }
+  return { targets: [...targets].map(([pageId, aliases]) => ({ pageId, aliases })), next };
+}
+
+/** Fetch one wiki page and turn its in-game articles into GTA `Discovered` records. */
+export async function wikiPageRecords(client: WikiClient, cat: { name: string; mode: string }, pageId: number, aliases: string[]): Promise<Discovered[]> {
+  const page = await client.page(pageId);
+  const { articles } = extractArticles(page, { wikiBase: client.wikiBase, mode: cat.mode as ExtractMode, category: cat.name, aliases });
+  return articles.map((a) => {
+    const title = cleanText(a.headline, 300);
+    const canonicalUrl = canonicalizeUrl(a.canonicalUrl) ?? a.canonicalUrl;
+    return {
+      kind: 'GTA_CANON' as const,
+      provider: 'grandtheftwiki' as const,
+      providerKey: a.key,
+      title,
+      // Pretty URL with #section is what players open; the curid permalink is the stable identity.
+      originalUrl: a.url,
+      canonicalUrl: a.canonicalUrl.startsWith('https://') ? a.canonicalUrl : canonicalUrl,
+      publisher: 'Grand Theft Wiki',
+      publishedAt: null,
+      seenAt: null,
+      excerpt: cleanText(a.lead, 800),
+      gameHint: a.gameHint,
+      wikiPageId: a.pageId,
+      wikiSection: a.sectionAnchor,
+      floridaSignal: 'none' as const,
+      floridaEvidence: null,
+      notes: [a.needsReviewReason ? `REVIEW: ${a.needsReviewReason}` : null, a.outlet ? `Outlet: ${a.outlet}` : null, a.aliases.length ? `Aliases: ${a.aliases.join(', ')}` : null]
+        .filter(Boolean)
+        .join('\n') || null,
+      prefilter: prefilterGta({ title, needsReviewReason: a.needsReviewReason }),
+    };
+  });
+}
+
 export async function discoverWiki(
   cfg: SourcesConfig,
   client: WikiClient,
@@ -123,48 +173,14 @@ export async function discoverWiki(
     let ok = true;
     for (let n = 0; n < opts.maxMemberPages; n++) {
       try {
-        const { members, next } = await client.categoryMembers(cat.name, cont);
-        const resolutions = [];
-        for (let i = 0; i < members.length; i += 50) resolutions.push(...(await client.resolve(members.slice(i, i + 50).map((m) => m.title))));
-        const targets = new Map<number, string[]>();
-        for (const r of resolutions) {
-          const aliases = targets.get(r.targetPageId) ?? [];
-          if (r.isRedirect) aliases.push(r.fragment ?? r.memberTitle);
-          targets.set(r.targetPageId, aliases);
-        }
-        for (const [pageId, aliases] of targets) {
+        const { targets, next } = await wikiTargets(client, cat.name, cont);
+        for (const { pageId, aliases } of targets) {
           if (fetchedPages.has(pageId)) continue;
           fetchedPages.add(pageId);
           try {
-            const page = await client.page(pageId);
-            const { articles } = extractArticles(page, { wikiBase: client.wikiBase, mode: cat.mode as ExtractMode, category: cat.name, aliases });
-            for (const a of articles) {
-              const title = cleanText(a.headline, 300);
-              const canonicalUrl = canonicalizeUrl(a.canonicalUrl) ?? a.canonicalUrl;
-              out.fetched++;
-              out.items.push({
-                kind: 'GTA_CANON',
-                provider: 'grandtheftwiki',
-                providerKey: a.key,
-                title,
-                // Pretty URL with #section is what players open; the curid permalink is the stable identity.
-                originalUrl: a.url,
-                canonicalUrl: a.canonicalUrl.startsWith('https://') ? a.canonicalUrl : canonicalUrl,
-                publisher: 'Grand Theft Wiki',
-                publishedAt: null,
-                seenAt: null,
-                excerpt: cleanText(a.lead, 800),
-                gameHint: a.gameHint,
-                wikiPageId: a.pageId,
-                wikiSection: a.sectionAnchor,
-                floridaSignal: 'none',
-                floridaEvidence: null,
-                notes: [a.needsReviewReason ? `REVIEW: ${a.needsReviewReason}` : null, a.outlet ? `Outlet: ${a.outlet}` : null, a.aliases.length ? `Aliases: ${a.aliases.join(', ')}` : null]
-                  .filter(Boolean)
-                  .join('\n') || null,
-                prefilter: prefilterGta({ title, needsReviewReason: a.needsReviewReason }),
-              });
-            }
+            const records = await wikiPageRecords(client, cat, pageId, aliases);
+            out.fetched += records.length;
+            out.items.push(...records);
           } catch (error) {
             out.errors.push(`wiki:page:${pageId}: ${(error as Error).message}`.slice(0, 300));
           }

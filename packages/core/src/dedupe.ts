@@ -159,7 +159,18 @@ function dice<T>(a: Set<T>, b: Set<T>): number {
   return (2 * inter) / (a.size + b.size);
 }
 
-type Prepared = { tokens: Set<string>; grams: Set<string> };
+export type PreparedTitle = { tokens: Set<string>; grams: Set<string> };
+type Prepared = PreparedTitle;
+
+/** Precompute a title's token + trigram sets (reuse across many comparisons). */
+export function prepareTitle(title: string): PreparedTitle {
+  return prepare(title);
+}
+
+/** Similarity of two prepared titles; identical to titleSimilarity on the raw strings. */
+export function preparedSimilarity(a: PreparedTitle, b: PreparedTitle): number {
+  return similarityPrepared(a, b);
+}
 
 function prepare(title: string): Prepared {
   return { tokens: new Set(contentTokens(title)), grams: trigrams(normalizeTitle(title)) };

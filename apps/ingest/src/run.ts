@@ -18,7 +18,7 @@ import { createWikiClient } from './adapters/grandtheftwiki.ts';
 import { createBudget, createMockAiProvider, createWorkersAiProvider, type AiProvider } from './classify.ts';
 import { discoverGdelt, discoverRss, discoverWiki, type DiscoveryResult, type Log } from './discover.ts';
 import { createWorkerClient, type WorkerClient } from './import.ts';
-import { loadSourcesConfig } from './normalize.ts';
+import { loadSourcesConfig } from './config-file.ts';
 import { processDiscovered } from './pipeline.ts';
 import { checkLink, toLinkCheck } from './verify.ts';
 import { REPO_ROOT } from './paths.ts';
@@ -29,9 +29,9 @@ const log: Log = {
   error: (m) => console.error(process.env.GITHUB_ACTIONS ? `::error::${m}` : `ERROR ${m}`),
 };
 
-const USER_AGENT = process.env.HTTP_USER_AGENT || 'gta-or-florida-ingest/0.3 (unofficial fan trivia project; metadata only)';
+export const USER_AGENT = process.env.HTTP_USER_AGENT || 'gta-or-florida-ingest/0.3 (unofficial fan trivia project; metadata only)';
 
-function aiProvider(choice: string): AiProvider | null {
+export function aiProvider(choice: string): AiProvider | null {
   if (choice === 'off') return null;
   if (choice === 'mock') return createMockAiProvider();
   const accountId = process.env.CF_AI_ACCOUNT_ID ?? '';

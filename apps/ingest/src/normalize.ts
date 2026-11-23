@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { canonicalizeUrl, cleanText } from '@gof/core';
 import type { FeedConfig } from './adapters/rss.ts';
 
@@ -30,10 +28,10 @@ export type SourcesConfig = {
   rss?: FeedConfig[];
 };
 
-export function loadSourcesConfig(dataDir: string): SourcesConfig {
-  const file = resolve(dataDir, 'sources.json');
-  const config = JSON.parse(readFileSync(file, 'utf8')) as SourcesConfig;
-  if (config?.version !== 1 || !Array.isArray(config.gdelt?.batches)) throw new Error(`${file} has an unexpected shape`);
+/** Validate the parsed data/sources.json (runtime-neutral: the Worker bundles it as a JSON import). */
+export function parseSourcesConfig(raw: unknown, label = 'sources.json'): SourcesConfig {
+  const config = raw as SourcesConfig;
+  if (config?.version !== 1 || !Array.isArray(config.gdelt?.batches)) throw new Error(`${label} has an unexpected shape`);
   return config;
 }
 

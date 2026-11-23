@@ -16,6 +16,7 @@
     "dev": "concurrently -k -n worker,web -c magenta,cyan \"npm:dev:worker\" \"npm:dev:web\"",
     "dev:worker": "tsx scripts/seed-local.ts --vars-only && npm run db:migrate:local && npm run dev -w @gof/worker",
     "dev:web": "npm run dev -w @gof/web",
+    "dev:ingest": "npx wrangler dev -c apps/ingest-worker/wrangler.jsonc -c apps/worker/wrangler.jsonc --env local --port 8788 --persist-to apps/worker/.wrangler/state",
     "dev:seed": "tsx --env-file-if-exists=.env scripts/seed-local.ts",
     "db:migrate:local": "npm run db:migrate:local -w @gof/worker",
     "build": "npm run build -w @gof/web && npm run build -w @gof/worker",
@@ -29,12 +30,16 @@
     "schedule:build": "tsx scripts/build-daily-schedule.ts",
     "ci": "npm run typecheck && npm run test && npm run validate",
     "ingest:batch": "tsx --env-file-if-exists=.env apps/ingest/src/run.ts",
+    "ingest:url": "tsx --env-file-if-exists=.env apps/ingest/src/ingest-url.ts",
     "admin": "tsx --env-file-if-exists=.env apps/ingest/src/admin.ts",
     "legacy:export": "tsx apps/ingest/src/legacy.ts export",
     "legacy:import": "tsx --env-file-if-exists=.env apps/ingest/src/legacy.ts import",
     "smoke": "tsx scripts/smoke.ts",
     "deploy:worker:staging": "npm run deploy:staging -w @gof/worker",
-    "deploy:worker:production": "npm run deploy:production -w @gof/worker"
+    "deploy:worker:production": "npm run deploy:production -w @gof/worker",
+    "check:ingest:staging": "npm run check:staging -w @gof/ingest-worker",
+    "deploy:ingest:staging": "npm run deploy:staging -w @gof/ingest-worker",
+    "deploy:ingest:production": "npm run deploy:production -w @gof/ingest-worker"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

@@ -51,7 +51,8 @@
         }
       ],
       "ratelimits": [{ "name": "RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }],
-      "triggers": { "crons": ["5 0 * * *", "30 12 * * *"] }
+      // One expression (00:05 + 12:05 UTC): Workers Free allows 5 Cron Triggers per ACCOUNT, shared with the ingestion Worker.
+      "triggers": { "crons": ["5 0,12 * * *"] }
     },
     "production": {
       "vars": {
@@ -69,7 +70,8 @@
         }
       ],
       "ratelimits": [{ "name": "RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }],
-      "triggers": { "crons": ["5 0 * * *", "30 12 * * *"] }
+      // One expression (00:05 + 12:05 UTC): Workers Free allows 5 Cron Triggers per ACCOUNT, shared with the ingestion Worker.
+      "triggers": { "crons": ["5 0,12 * * *"] }
     }
   }
 }

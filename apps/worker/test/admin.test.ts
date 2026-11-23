@@ -141,6 +141,29 @@ describe('auto-publish gate (policy state machine)', () => {
     expect(q).toEqual({ approval_actor_type: 'policy', approved_by: expect.stringMatching(/^policy:/) });
   });
 
+  it('manual submissions (ingest:url) are never auto-approved, even from a fully trusted source', async () => {
+    await storeBenchmark();
+    const manual = floridaItem(16);
+    manual.reference.provider = 'manual';
+    const [r] = await runImport([manual]);
+    expect(r!.questionState).toBe('candidate');
+    expect(r!.gate).toMatchObject({ decision: 'review', effective: 'candidate' });
+    expect(r!.gate!.reasons).toContain('MANUAL_SUBMISSION');
+  });
+
+  it('registers an unknown publisher as unreviewed on import', async () => {
+    const unknown = floridaItem(17);
+    unknown.reference.provider = 'manual';
+    unknown.reference.originalUrl = unknown.reference.canonicalUrl = 'https://www.new-outlet.example.net/story';
+    unknown.reference.linkCheck!.finalUrl = unknown.reference.canonicalUrl;
+    const [r] = await runImport([unknown]);
+    expect(r!.questionState).toBe('candidate');
+    const src = await h.db
+      .prepare(`SELECT license_status, can_display_original_title, can_use_editorial_summary, auto_publish_allowed FROM sources WHERE id = 'publisher:new-outlet.example.net'`)
+      .first();
+    expect(src).toEqual({ license_status: 'unreviewed', can_display_original_title: 0, can_use_editorial_summary: 0, auto_publish_allowed: 0 });
+  });
+
   it('a perfect model verdict cannot approve a giveaway title, missing date, unknown source or missing benchmark', async () => {
     await storeBenchmark();
     const giveaway = floridaItem(12, { playTitle: 'Florida man rides a lawnmower through a Miami drive-thru' });
@@ -246,6 +269,47 @@ describe('review, withdraw, merge', () => {
     expect((await (await reviewReq(base)).json()).errors.join()).toMatch(/game is required/);
     expect((await (await reviewReq({ ...base, game: 'GTA_V' })).json()).errors.join()).toMatch(/differs/);
     expect((await reviewReq({ ...base, game: 'GTA_III' })).status).toBe(200);
+  });
+
+  it('mirrors the staging wiki candidates: AI_NOT_RUN / NO_BENCHMARK_FOR_POLICY are advisory; source rights and an on-source link check are not', async () => {
+    const url = 'https://www.grandtheftwiki.com/Van_Heist';
+    const gta: ImportItem = {
+      ...floridaItem(32),
+      kind: 'GTA_CANON',
+      incidentKey: 'gta:grandtheftwiki:1874',
+      reference: { ...floridaItem(32).reference, provider: 'grandtheftwiki', providerKey: '1874', originalUrl: url, canonicalUrl: 'https://www.grandtheftwiki.com/index.php?curid=1874', publisher: 'Grand Theft Wiki', wikiPageId: 1874, wikiSection: null, originalTitle: 'Van Heist', publishedAt: null, linkCheck: null },
+      incident: { ...floridaItem(32).incident, gameDetected: 'GTA_III', floridaSignal: 'none', floridaEvidence: null },
+      question: { playTitleDraft: 'Van Heist', explanationDraft: '', difficulty: 2 },
+      ai: null,
+    };
+    // Bundled registry: Grand Theft Wiki is unreviewed, exactly like staging.
+    const [imported] = ((await (await importReq([gta])).json()) as ImportResponse).results;
+    expect(imported!.questionState).toBe('candidate');
+    expect(imported!.gate!.reasons).toEqual(expect.arrayContaining(['SOURCE_UNREVIEWED', 'LINK_NOT_VERIFIED', 'AI_NOT_RUN', 'NO_BENCHMARK_FOR_POLICY', 'PLAY_TITLE_VERBATIM']));
+    expect(imported!.gate!.reasons).not.toContain('LINK_REDIRECT_OFF_SOURCE');
+
+    const id = (await h.db.prepare('SELECT id FROM questions').first<{ id: string }>())!.id;
+    const wikiLink = { status: 'ok', httpStatus: 200, finalUrl: url, checkedAt: '2026-11-22T11:00:00.000Z' };
+    const human = {
+      questionId: id,
+      action: 'approve',
+      game: 'GTA_III',
+      playTitle: 'Crew ambushes an armored security van to grab the cash inside',
+      explanation: 'A mission in GTA III: the player helps rob a security van. Summary written by our editor; see the linked wiki page.',
+      linkCheck: wikiLink,
+    };
+    const blocked = (await (await reviewReq(human)).json()).errors.join('\n');
+    expect(blocked).toMatch(/SOURCE_UNREVIEWED: .*\(grandtheftwiki\)/);
+    expect(blocked).not.toMatch(/AI|BENCHMARK/);
+
+    await seedSource(h.db, APPROVED_WIKI); // stand-in for the owner's registry review + deploy + sources:sync
+    expect((await (await reviewReq({ ...human, playTitle: 'Van Heist' })).json()).errors.join()).toMatch(/PLAY_TITLE_VERBATIM|PLAY_TITLE_LENGTH/);
+    const offSite = await (await reviewReq({ ...human, linkCheck: { ...wikiLink, finalUrl: 'https://mirror.example.net/Van_Heist' } })).json();
+    expect(offSite.errors.join()).toMatch(/outside source grandtheftwiki/);
+    const ok = await reviewReq(human);
+    expect(ok.status).toBe(200);
+    const q = await h.db.prepare('SELECT quality_state, play_title, play_title_reviewed, approval_actor_type FROM questions WHERE id = ?').bind(id).first();
+    expect(q).toEqual({ quality_state: 'approved', play_title: human.playTitle, play_title_reviewed: 1, approval_actor_type: 'human' });
   });
 
   it('withdrawing a question withdraws today for everyone and refills future days', async () => {

@@ -60,6 +60,9 @@ export function hostMatches(host: string, hosts: readonly string[]): boolean {
   return hosts.some((entry) => h === entry || h.endsWith(`.${entry}`));
 }
 
+/** `reference.provider` for owner-submitted URLs (`npm run ingest:url`). The gate never auto-approves these. */
+export const MANUAL_PROVIDER = 'manual';
+
 export const AUTO_PUBLISH_MODES = ['off', 'shadow', 'trusted_sources'] as const;
 export type AutoPublishMode = (typeof AUTO_PUBLISH_MODES)[number];
 
@@ -91,6 +94,8 @@ export type AutoPublishThresholds = {
 export type AutoPublishFacts = {
   kind: ContentKind;
   fixture: boolean;
+  /** Owner-submitted single URL (`ingest:url`): always routed to a human, never auto-approved. */
+  manualSubmission?: boolean;
   source: SourcePolicy;
   linkStatus: string;
   linkCheckedAt: string | null;
@@ -141,12 +146,14 @@ export function evaluateAutoPublish(input: {
   const add = (r: string) => reasons.push(r);
 
   if (f.fixture) add('FIXTURE');
+  if (f.manualSubmission) add('MANUAL_SUBMISSION');
   if (f.kind === 'GTA_PLAYER_EVENT') add('PLAYER_EVENTS_DISABLED');
   for (const p of sourceProblems(f.source)) add(p.split(':')[0]!);
   if (!f.source.autoPublishAllowed) add('SOURCE_NOT_AUTO_TRUSTED');
   if (f.linkStatus !== 'ok') add('LINK_NOT_VERIFIED');
   else if (!f.linkCheckedAt || input.now.getTime() - Date.parse(f.linkCheckedAt) > t.maxLinkAgeDays * 86_400_000) add('LINK_CHECK_STALE');
-  if (!f.linkFinalHostOk) add('LINK_REDIRECT_OFF_SOURCE');
+  // Only meaningful for a successful check: an unchecked/broken link has no trustworthy final URL, and LINK_NOT_VERIFIED already blocks it.
+  if (f.linkStatus === 'ok' && !f.linkFinalHostOk) add('LINK_REDIRECT_OFF_SOURCE');
   for (const p of f.playTitleProblems) add(p.split(':')[0]!);
   for (const p of f.explanationProblems) add(p.split(':')[0]!);
   if (f.possibleDuplicate) add('POSSIBLE_DUPLICATE');

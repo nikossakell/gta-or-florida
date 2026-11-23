@@ -5,6 +5,10 @@
  *   exact dedupe (run + Worker known keys) → fuzzy incident dedupe → deterministic
  *   prefilter → SSRF-safe link check → AI (budgeted) → ImportItem
  *
+ * Each phase is also exported on its own with plain, serializable inputs and
+ * outputs, so the Cloudflare Workflow (apps/ingest-worker) can run them as
+ * separate bounded steps. `processDiscovered` composes the same phases.
+ *
  * Nothing here can approve anything: the Worker decides, under the owner's policy.
  */
 import { createHash } from 'node:crypto';
@@ -12,12 +16,13 @@ import { cleanText, draftPlayTitle, type AiTrace, type GtaGame, type ImportItem,
 import { sourceForHost, sourceById } from '@gof/config';
 import { classify, mapLimit, type AiProvider, type Budget } from './classify.ts';
 import { createRunDeduper, type ExistingTitle } from './deduplicate.ts';
+export type { ExistingTitle };
 import type { FilterResult } from './filters.ts';
 import type { WorkerClient } from './import.ts';
 
 export type Discovered = {
   kind: 'FLORIDA_NEWS' | 'GTA_CANON';
-  provider: 'gdelt' | 'rss' | 'grandtheftwiki';
+  provider: 'gdelt' | 'rss' | 'grandtheftwiki' | 'manual';
   providerKey: string | null;
   title: string;
   originalUrl: string;
@@ -81,9 +86,20 @@ function sourceFor(d: Discovered) {
   return sourceForHost(new URL(d.canonicalUrl).hostname);
 }
 
-export async function processDiscovered(found: Discovered[], deps: PipelineDeps): Promise<{ items: ImportItem[]; stats: PipelineStats }> {
-  const stats: PipelineStats = {
-    discovered: found.length,
+export type Planned = {
+  d: Discovered;
+  incidentKey: string;
+  attachTo?: string;
+  dupOf?: { key: string; similarity: number };
+  link: LinkCheck | null;
+  ai: AiTrace | null;
+  playTitle: string | null;
+  explanation: string | null;
+};
+
+export function emptyStats(discovered: number): PipelineStats {
+  return {
+    discovered,
     duplicates: 0,
     attached: 0,
     flaggedForReview: 0,
@@ -95,8 +111,10 @@ export async function processDiscovered(found: Discovered[], deps: PipelineDeps)
     toImport: 0,
     rejectReasons: {},
   };
+}
 
-  // 1. exact identity within this run
+/** Phase 1: exact identity within this run (same canonical URL or provider key). */
+export function uniqueWithinRun(found: Discovered[], stats: PipelineStats): Discovered[] {
   const unique: Discovered[] = [];
   const seenUrl = new Set<string>();
   const seenKey = new Set<string>();
@@ -109,27 +127,25 @@ export async function processDiscovered(found: Discovered[], deps: PipelineDeps)
     if (d.providerKey) seenKey.add(d.providerKey);
     unique.push(d);
   }
+  return unique;
+}
 
-  // 2. exact identity against D1 (any state, incl. rejected — rejected items never come back)
-  const knownUrls = new Set<string>();
-  const knownKeys = new Set<string>();
-  if (deps.client) {
-    for (let i = 0; i < unique.length; i += 90) {
-      const chunk = unique.slice(i, i + 90);
-      const r = await deps.client.known(chunk.map((d) => d.canonicalUrl), chunk.map((d) => d.providerKey).filter((k): k is string => !!k));
-      r.canonicalUrls.forEach((u) => knownUrls.add(u));
-      r.providerKeys.forEach((k) => knownKeys.add(k));
-    }
-  }
-
-  // 3. fuzzy incident dedupe against existing titles of the same kind
-  const existing = deps.existingTitles ?? [];
+/**
+ * Phase 3: fuzzy incident dedupe + prefilter accounting. `existingTitles` may be the full
+ * index or the reduced, order-preserving set from `scanExisting` (same verdicts).
+ */
+export function planCandidates(
+  unique: Discovered[],
+  known: { canonicalUrls: Iterable<string>; providerKeys: Iterable<string> },
+  existingTitles: ExistingTitle[],
+  stats: PipelineStats,
+): Planned[] {
+  const knownUrls = new Set(known.canonicalUrls);
+  const knownKeys = new Set(known.providerKeys);
   const dedupers = {
-    FLORIDA_NEWS: createRunDeduper(existing.filter((e) => e.incidentKey.startsWith('fl:')), knownUrls, knownKeys),
-    GTA_CANON: createRunDeduper(existing.filter((e) => e.incidentKey.startsWith('gta:')), knownUrls, knownKeys),
+    FLORIDA_NEWS: createRunDeduper(existingTitles.filter((e) => e.incidentKey.startsWith('fl:')), knownUrls, knownKeys),
+    GTA_CANON: createRunDeduper(existingTitles.filter((e) => e.incidentKey.startsWith('gta:')), knownUrls, knownKeys),
   };
-
-  type Planned = { d: Discovered; incidentKey: string; attachTo?: string; dupOf?: { key: string; similarity: number }; link: LinkCheck | null; ai: AiTrace | null; playTitle: string | null; explanation: string | null };
   const planned: Planned[] = [];
   for (const d of unique) {
     const deduper = dedupers[d.kind];
@@ -154,75 +170,109 @@ export async function processDiscovered(found: Discovered[], deps: PipelineDeps)
     }
     planned.push(p);
   }
+  return planned;
+}
+
+/** Items that may become questions and therefore get a link check (in plan order). */
+export const needsLinkCheck = (p: Planned) => p.d.prefilter.decision === 'candidate';
+/** Items that get AI: new, prefilter-passing, link working or unchecked. */
+export const needsAi = (p: Planned) => !p.attachTo && p.d.prefilter.decision === 'candidate' && p.link?.status !== 'broken';
+
+/** Phase 4: link check one planned item (mutates it). */
+export async function linkCheckOne(p: Planned, checkLink: (url: string) => Promise<LinkCheck>, stats: PipelineStats): Promise<void> {
+  p.link = await checkLink(p.d.originalUrl);
+  stats.linkChecked++;
+  if (p.link.status !== 'ok') stats.linkBroken++;
+}
+
+/** Phase 5: AI-classify one planned item under the shared budget (mutates it). Never throws. */
+export async function classifyOne(p: Planned, ai: AiProvider, budget: Budget, stats: PipelineStats): Promise<void> {
+  const src = sourceFor(p.d);
+  const r = await classify(ai, budget, {
+    kind: p.d.kind,
+    title: p.d.title,
+    excerpt: p.d.excerpt,
+    gameHint: p.d.gameHint,
+    exactTitleAllowed: src.licenseStatus === 'approved' && src.canDisplayOriginalTitle,
+  });
+  if (r.trace) stats.aiClassified++;
+  else stats.aiSkipped++;
+  p.ai = r.trace;
+  p.playTitle = r.playTitle;
+  p.explanation = r.explanation;
+}
+
+/** Phase 6: planned item → ImportItem (the Worker re-validates everything). */
+export function buildImportItem(p: Planned): ImportItem {
+  const d = p.d;
+  return {
+    kind: d.kind,
+    incidentKey: p.incidentKey,
+    ...(p.attachTo ? { attachToIncidentKey: p.attachTo } : {}),
+    reference: {
+      provider: d.provider,
+      providerKey: d.providerKey,
+      originalUrl: serializeUrl(d.originalUrl) ?? d.originalUrl,
+      canonicalUrl: serializeUrl(d.canonicalUrl) ?? d.canonicalUrl,
+      originalTitle: cleanText(d.title, 400),
+      publisher: d.publisher ? cleanText(d.publisher, 120) : null,
+      publishedAt: d.publishedAt,
+      providerSeenAt: d.seenAt,
+      wikiPageId: d.wikiPageId,
+      wikiSection: d.wikiSection ? cleanText(d.wikiSection, 200) : null,
+      contentDigest: digest(`${d.title}\n${d.canonicalUrl}`),
+      linkCheck: p.link,
+    },
+    incident: {
+      category: p.ai?.category ?? 'other',
+      gameDetected: d.gameHint,
+      floridaSignal: d.floridaSignal,
+      floridaEvidence: d.floridaEvidence ? cleanText(d.floridaEvidence, 300) : null,
+      possibleDuplicateOfKey: p.dupOf?.key ?? null,
+      similarity: p.dupOf?.similarity ?? null,
+      notes: d.notes ? cleanText(d.notes, 1000) : null,
+    },
+    question: {
+      // AI drafts are suggestions for the reviewer; the rule-based draft is the fallback.
+      playTitleDraft: (p.playTitle ?? (draftPlayTitle(d.title) || d.title)).slice(0, 240),
+      explanationDraft: (p.explanation ?? '').slice(0, 800),
+      difficulty: 2,
+    },
+    ai: p.ai,
+    prefilter: d.prefilter,
+  };
+}
+
+export async function processDiscovered(found: Discovered[], deps: PipelineDeps): Promise<{ items: ImportItem[]; stats: PipelineStats }> {
+  const stats = emptyStats(found.length);
+  const unique = uniqueWithinRun(found, stats);
+
+  // 2. exact identity against D1 (any state, incl. rejected — rejected items never come back)
+  const knownUrls = new Set<string>();
+  const knownKeys = new Set<string>();
+  if (deps.client) {
+    for (let i = 0; i < unique.length; i += 90) {
+      const chunk = unique.slice(i, i + 90);
+      const r = await deps.client.known(chunk.map((d) => d.canonicalUrl), chunk.map((d) => d.providerKey).filter((k): k is string => !!k));
+      r.canonicalUrls.forEach((u) => knownUrls.add(u));
+      r.providerKeys.forEach((k) => knownKeys.add(k));
+    }
+  }
+
+  // 3. fuzzy incident dedupe against existing titles of the same kind
+  const planned = planCandidates(unique, { canonicalUrls: knownUrls, providerKeys: knownKeys }, deps.existingTitles ?? [], stats);
 
   // 4. link checks (only for items that may become questions)
-  const needLink = planned.filter((p) => p.d.prefilter.decision === 'candidate').slice(0, deps.checkLink ? deps.maxLinkChecks : 0);
-  await mapLimit(needLink, 2, async (p) => {
-    p.link = await deps.checkLink!(p.d.originalUrl);
-    stats.linkChecked++;
-    if (p.link.status !== 'ok') stats.linkBroken++;
-  });
+  const needLink = planned.filter(needsLinkCheck).slice(0, deps.checkLink ? deps.maxLinkChecks : 0);
+  await mapLimit(needLink, 2, (p) => linkCheckOne(p, deps.checkLink!, stats));
 
   // 5. AI on new, prefilter-passing items with a working (or unchecked) link
-  const needAi = planned.filter((p) => !p.attachTo && p.d.prefilter.decision === 'candidate' && p.link?.status !== 'broken');
-  if (deps.ai) {
-    await mapLimit(needAi, deps.aiConcurrency, async (p) => {
-      const src = sourceFor(p.d);
-      const r = await classify(deps.ai!, deps.budget, {
-        kind: p.d.kind,
-        title: p.d.title,
-        excerpt: p.d.excerpt,
-        gameHint: p.d.gameHint,
-        exactTitleAllowed: src.licenseStatus === 'approved' && src.canDisplayOriginalTitle,
-      });
-      if (r.trace) stats.aiClassified++;
-      else stats.aiSkipped++;
-      p.ai = r.trace;
-      p.playTitle = r.playTitle;
-      p.explanation = r.explanation;
-    });
-  } else stats.aiSkipped += needAi.length;
+  const needAi = planned.filter(needsAi);
+  if (deps.ai) await mapLimit(needAi, deps.aiConcurrency, (p) => classifyOne(p, deps.ai!, deps.budget, stats));
+  else stats.aiSkipped += needAi.length;
 
   // 6. build import items
-  const items: ImportItem[] = planned.map((p) => {
-    const d = p.d;
-    return {
-      kind: d.kind,
-      incidentKey: p.incidentKey,
-      ...(p.attachTo ? { attachToIncidentKey: p.attachTo } : {}),
-      reference: {
-        provider: d.provider,
-        providerKey: d.providerKey,
-        originalUrl: serializeUrl(d.originalUrl) ?? d.originalUrl,
-        canonicalUrl: serializeUrl(d.canonicalUrl) ?? d.canonicalUrl,
-        originalTitle: cleanText(d.title, 400),
-        publisher: d.publisher ? cleanText(d.publisher, 120) : null,
-        publishedAt: d.publishedAt,
-        providerSeenAt: d.seenAt,
-        wikiPageId: d.wikiPageId,
-        wikiSection: d.wikiSection ? cleanText(d.wikiSection, 200) : null,
-        contentDigest: digest(`${d.title}\n${d.canonicalUrl}`),
-        linkCheck: p.link,
-      },
-      incident: {
-        category: p.ai?.category ?? 'other',
-        gameDetected: d.gameHint,
-        floridaSignal: d.floridaSignal,
-        floridaEvidence: d.floridaEvidence ? cleanText(d.floridaEvidence, 300) : null,
-        possibleDuplicateOfKey: p.dupOf?.key ?? null,
-        similarity: p.dupOf?.similarity ?? null,
-        notes: d.notes ? cleanText(d.notes, 1000) : null,
-      },
-      question: {
-        // AI drafts are suggestions for the reviewer; the rule-based draft is the fallback.
-        playTitleDraft: (p.playTitle ?? (draftPlayTitle(d.title) || d.title)).slice(0, 240),
-        explanationDraft: (p.explanation ?? '').slice(0, 800),
-        difficulty: 2,
-      },
-      ai: p.ai,
-      prefilter: d.prefilter,
-    };
-  });
+  const items = planned.map(buildImportItem);
   stats.toImport = items.length;
   return { items, stats };
 }

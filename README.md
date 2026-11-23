@@ -14,8 +14,8 @@
             ▼
           Cloudflare Worker (apps/worker) ── D1 (η μόνη production βάση)
             ▲  protected /api/v1/admin/* (bearer tokens)
-GitHub Actions (apps/ingest, Node): GDELT + εγκεκριμένα RSS + Grand Theft Wiki
-  → dedupe → φίλτρα → SSRF-safe link check → Workers AI (Granite → Gemma, REST, budget)
+Cloudflare Cron → Workflow (apps/ingest-worker): εγκεκριμένα RSS (+ GDELT fallback) + Grand Theft Wiki
+  → dedupe → φίλτρα → SSRF-safe link check → Workers AI (Granite → Gemma, binding, budget)
   → authenticated, idempotent import → scheduling 30 ημέρες μπροστά
 ```
 
@@ -52,6 +52,8 @@ Ingestion & review (local ή απέναντι σε staging):
 ```bash
 npm run ingest:batch -- --dry-run --source gta --ai mock     # discovery + φίλτρα + AI, χωρίς import
 npm run ingest:batch -- --source all                         # import στο INGESTION_API_URL (service token)
+npm run ingest:url -- --env staging --dry-run "<https-article-url>"   # ένα άρθρο Florida χειροκίνητα, χωρίς import
+npm run ingest:url -- --env staging "<https-article-url>"             # import ως candidate για review (ποτέ auto-approve)
 npm run admin -- candidates:list --kind GTA_CANON
 npm run admin -- questions:approve --id <q> --play-title "…" --explanation "…" --game GTA_III
 npm run admin -- withdraw --day 2026-11-22 --reason "…"
@@ -75,7 +77,8 @@ apps/worker/          Cloudflare Worker (Wrangler) + D1
   src/routes/           public.ts (/api/health, /api/challenge/*, /api/archive), admin.ts (/api/v1/admin/*)
   src/services/         challenge, scheduling, importer (gate), review/withdraw/merge/stats, sources (registry → D1)
   src/security/         auth (constant-time bearer), CORS allowlist, idempotency, URL safety
-apps/ingest/          Node batch (GitHub Actions): adapters (gdelt, grandtheftwiki, rss, http), filters, deduplicate,
+apps/ingest-worker/   Cloudflare ingestion Worker: Cron Trigger → Workflow (bounded steps) → API Worker (Service Binding)
+apps/ingest/          Κοινή λογική ingestion (runtime-neutral) + τοπικά CLI: adapters (gdelt, grandtheftwiki, rss, http), filters, deduplicate,
                       verify (SSRF-safe link check), classify (Workers AI REST), import (Worker client), run, admin CLI, legacy
 apps/web/             React 19 + Vite + Tailwind CSS v4 + TanStack Query + TanStack Router (Cloudflare Pages)
 scripts/              static demo (validate/build-pages/schedule), check-config, seed-local, smoke

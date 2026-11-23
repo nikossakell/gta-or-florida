@@ -1,0 +1,23 @@
+{
+  "name": "@gof/ingest-worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cloudflare ingestion Worker: Cron Trigger → Workflow (bounded steps) → API Worker via Service Binding + Workers AI binding.",
+  "scripts": {
+    "dev": "wrangler dev --env local --port 8788",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "check:staging": "wrangler deploy --dry-run --env staging --outdir dist",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test"
+  },
+  "dependencies": {
+    "@gof/config": "*",
+    "@gof/core": "*",
+    "@gof/ingest": "*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261122.2",
+    "wrangler": "^4.166.0"
+  }
+}

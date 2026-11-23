@@ -69,12 +69,22 @@ describe('evaluateAutoPublish', () => {
       [{ floridaEvidence: false }, 'FLORIDA_LOCATION_UNSUPPORTED'],
       [{ possibleDuplicate: true }, 'POSSIBLE_DUPLICATE'],
       [{ ai: null }, 'AI_NOT_RUN'],
+      [{ manualSubmission: true }, 'MANUAL_SUBMISSION'],
       [{ kind: 'GTA_CANON' as const, deterministicGame: 'GTA_III' as const, ai: { ...FACTS.ai!, gtaGame: 'GTA_IV' as const } }, 'GTA_GAME_UNVERIFIED'],
     ] as const) {
       const r = run({}, facts as Partial<AutoPublishFacts>);
       expect(r.effective, reason).not.toBe('approve');
       expect(r.reasons).toContain(reason);
     }
+  });
+
+  it('an unchecked link is reported as not verified, not as an off-source redirect', () => {
+    const r = run({}, { linkStatus: 'unchecked', linkCheckedAt: null, linkFinalHostOk: false });
+    expect(r.reasons).toContain('LINK_NOT_VERIFIED');
+    expect(r.reasons).not.toContain('LINK_REDIRECT_OFF_SOURCE');
+    expect(r.effective).not.toBe('approve');
+    // A stale check that also left the source host still reports both.
+    expect(run({}, { linkCheckedAt: '2026-10-01T00:00:00Z', linkFinalHostOk: false }).reasons).toEqual(expect.arrayContaining(['LINK_CHECK_STALE', 'LINK_REDIRECT_OFF_SOURCE']));
   });
 
   it('requires an owner benchmark for the current policy within the owner threshold', () => {

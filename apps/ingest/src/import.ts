@@ -101,6 +101,18 @@ export function createWorkerClient(opts: WorkerClientOptions) {
     }
   }
 
+  /**
+   * Import ONE chunk (≤ MAX_IMPORT_ITEMS). Deterministic Idempotency-Key from run id, chunk
+   * index and body, so a retried chunk (or Workflow step) can never double-insert.
+   */
+  async function importChunk(runId: string, index: number, items: ImportItem[], run?: RunReport, checkpoints?: { provider: string; key: string; value: string }[]): Promise<ImportItemResult[]> {
+    if (items.length > MAX_IMPORT_ITEMS) throw new Error(`importChunk takes at most ${MAX_IMPORT_ITEMS} items`);
+    const body = { items, ...(run ? { run } : {}), ...(checkpoints?.length ? { checkpoints } : {}) };
+    const key = `${runId}:${index}:${sha(JSON.stringify(body)).slice(0, 16)}`;
+    const r = await request<ImportResponse>('POST', '/import', body, { 'idempotency-key': key });
+    return r.results;
+  }
+
   return {
     request,
     known: (canonicalUrls: string[], providerKeys: string[]) => request<KnownResponse>('POST', '/known', { canonicalUrls, providerKeys }),
@@ -120,6 +132,10 @@ export function createWorkerClient(opts: WorkerClientOptions) {
       const r = await request<{ checkpoints: { key: string; value: string }[] }>('GET', `/checkpoints?provider=${encodeURIComponent(provider)}`);
       return new Map(r.checkpoints.map((c) => [c.key, c.value]));
     },
+    /** One page of the title index (keyset cursor = last incident key). */
+    titlesPage: (kind: string, cursor: string | null, limit: number) =>
+      request<TitleIndexResponse>('GET', `/titles?kind=${encodeURIComponent(kind)}&limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`),
+    importChunk,
     /**
      * Import items in chunks. The run report and checkpoints ride on the LAST chunk only,
      * so a failed run never advances the cursor past items that were not stored.
@@ -131,10 +147,7 @@ export function createWorkerClient(opts: WorkerClientOptions) {
       if (chunks.length === 0) chunks.push([]);
       for (const [i, chunk] of chunks.entries()) {
         const last = i === chunks.length - 1;
-        const body = { items: chunk, ...(last && run ? { run } : {}), ...(last && checkpoints?.length ? { checkpoints } : {}) };
-        const key = `${runId}:${i}:${sha(JSON.stringify(body)).slice(0, 16)}`;
-        const r = await request<ImportResponse>('POST', '/import', body, { 'idempotency-key': key });
-        results.push(...r.results);
+        results.push(...(await importChunk(runId, i, chunk, last ? run : undefined, last ? checkpoints : undefined)));
       }
       return results;
     },
