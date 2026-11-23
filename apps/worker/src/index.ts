@@ -31,7 +31,9 @@ export async function handleRequest(request: Request, env: Env, now: Clock = () 
   const pathname = url.pathname;
   const isAdmin = pathname.startsWith('/api/v1/admin/');
   const origin = isAdmin ? null : allowedOrigin(request.headers.get('origin'), env);
-  const cors = origin ? corsHeaders(origin) : {};
+  // Public responses are cacheable, so they always vary on Origin — otherwise a cached copy without
+  // Access-Control-Allow-Origin could be reused for an allowed cross-origin fetch.
+  const cors: Record<string, string> = origin ? corsHeaders(origin) : isAdmin ? {} : { Vary: 'Origin' };
 
   try {
     if (request.method === 'OPTIONS') {

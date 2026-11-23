@@ -31,6 +31,16 @@ export function migrationStatements(): string[] {
     .filter(Boolean);
 }
 
+/** The `vars` a wrangler.jsonc environment declares (so tests track the real config, not a copy). */
+export function wranglerVars(environment: 'local' | 'staging' | 'production'): Partial<Env> {
+  const text = readFileSync(resolve(workerDir, 'wrangler.jsonc'), 'utf8');
+  const json = text.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, str: string | undefined) => str ?? '');
+  const config = JSON.parse(json) as { env: Record<string, { vars?: Record<string, string> }> };
+  const vars = config.env[environment]?.vars;
+  if (!vars) throw new Error(`wrangler.jsonc has no vars for env "${environment}"`);
+  return vars;
+}
+
 const TABLES = ['daily_round_items', 'daily_rounds', 'review_log', 'questions', 'source_references', 'incidents', 'sources', 'ingestion_runs', 'ingestion_checkpoints', 'idempotency_keys', 'app_meta'];
 
 /** Test responses: json() is loosely typed for assertions. */
