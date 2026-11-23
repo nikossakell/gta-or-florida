@@ -1,8 +1,10 @@
 // Cloudflare Worker API for GTA or Florida?
 // Bindings are NOT inherited between environments, so each env declares its own.
-// database_id values for staging/production MUST be replaced with the real UUIDs printed by
-//   npx wrangler d1 create gta-florida-staging      (and …-production)
-// The deploy workflow refuses to run while a placeholder is present.
+// D1 databases already exist in the Cloudflare account — do NOT run `wrangler d1 create` again:
+//   staging    → gta-or-florida-staging     (beb1f5d9-b4bf-4f46-ab25-28833fc531a1)
+//   production → gta-or-florida-production  (848c6f92-bd9a-4934-8374-cfa2d6f45fd5)
+// database_id values are identifiers, not secrets. Always pass --env: the top level has no D1
+// binding, so a bare `wrangler deploy` / `wrangler d1 migrations apply` reaches neither database.
 // Secrets (never in this file): wrangler secret put INGESTION_IMPORT_TOKEN --env <env>
 //                               wrangler secret put ADMIN_TOKEN --env <env>
 {
@@ -41,8 +43,8 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "gta-florida-staging",
-          "database_id": "REPLACE_WITH_STAGING_DATABASE_ID",
+          "database_name": "gta-or-florida-staging",
+          "database_id": "beb1f5d9-b4bf-4f46-ab25-28833fc531a1",
           "migrations_dir": "migrations"
         }
       ],
@@ -59,8 +61,8 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "gta-florida-production",
-          "database_id": "REPLACE_WITH_PRODUCTION_DATABASE_ID",
+          "database_name": "gta-or-florida-production",
+          "database_id": "848c6f92-bd9a-4934-8374-cfa2d6f45fd5",
           "migrations_dir": "migrations"
         }
       ],

@@ -12,7 +12,7 @@
 |---|---|---|
 | Frontend | Cloudflare Pages (Git integration, branch `main`) | React app, static. Μιλά με τον Worker μέσω `VITE_API_BASE_URL`. |
 | API | Cloudflare Worker `gta-florida-api-staging` / `gta-florida-api-production` | Public game + protected admin routes. Cron 00:05 & 12:30 UTC κρατά 30 ημέρες προγραμματισμένες. |
-| Βάση | Cloudflare D1 `gta-florida-staging` / `gta-florida-production` | Η **μόνη** production βάση. Χωριστές για staging/production. |
+| Βάση | Cloudflare D1 `gta-or-florida-staging` / `gta-or-florida-production` | Η **μόνη** production βάση. Χωριστές για staging/production. |
 | Ingestion | GitHub Actions (`ingest.yml`, 05:17 & 17:17 UTC + χειροκίνητα) | Node batch: discovery → φίλτρα → link check → Workers AI → import. |
 | AI | Workers AI REST (μόνο από GitHub Actions) | Granite (triage) → Gemma (extraction) για λίγα items. Ποτέ ανά παίκτη. |
 
@@ -29,16 +29,14 @@
 
 ## 2. D1 βάσεις (staging πρώτα)
 
-```bash
-cd apps/worker
-npx wrangler d1 create gta-florida-staging
-npx wrangler d1 create gta-florida-production
-```
+Οι βάσεις **έχουν ήδη δημιουργηθεί** και είναι δηλωμένες στο `apps/worker/wrangler.jsonc` ως binding `DB` — **μην** τρέξετε ξανά `wrangler d1 create` (θα δημιουργούσε διπλότυπες βάσεις):
 
-Κάθε εντολή τυπώνει ένα `database_id` (UUID). Αντικαταστήστε στο `apps/worker/wrangler.jsonc`:
+| Περιβάλλον | `database_name` | `database_id` |
+|---|---|---|
+| staging | `gta-or-florida-staging` | `beb1f5d9-b4bf-4f46-ab25-28833fc531a1` |
+| production | `gta-or-florida-production` | `848c6f92-bd9a-4934-8374-cfa2d6f45fd5` |
 
-- `REPLACE_WITH_STAGING_DATABASE_ID` → το UUID του staging
-- `REPLACE_WITH_PRODUCTION_DATABASE_ID` → το UUID του production
+Επιβεβαίωση: `npx wrangler d1 list` (από το `apps/worker`).
 
 Τα IDs δεν είναι secrets· κάντε commit. Το `npm run validate` ελέγχει ότι staging/production δεν μοιράζονται βάση, και το deploy workflow αρνείται placeholders.
 
@@ -46,10 +44,10 @@ Migrations — **πάντα local → staging → production**:
 
 ```bash
 npm run db:migrate:local                                                    # local emulator
-npx wrangler d1 migrations apply gta-florida-staging --remote --env staging
+npx wrangler d1 migrations apply gta-or-florida-staging --remote --env staging
 # … έλεγχοι στο staging (§5) …
-npx wrangler d1 export gta-florida-production --remote --env production --output backup-before-migrate.sql   # backup (αν έχει ήδη δεδομένα)
-npx wrangler d1 migrations apply gta-florida-production --remote --env production
+npx wrangler d1 export gta-or-florida-production --remote --env production --output backup-before-migrate.sql   # backup (αν έχει ήδη δεδομένα)
+npx wrangler d1 migrations apply gta-or-florida-production --remote --env production
 ```
 
 ## 3. Secrets του Worker
@@ -223,8 +221,8 @@ Default `AUTO_PUBLISH_MODE=shadow`: το gate καταγράφει τι **θα**
 
 ## 14. Backups & rollback
 
-- **D1 snapshot:** `npx wrangler d1 export gta-florida-production --remote --env production --output prod-YYYYMMDD.sql` (το deploy workflow το κάνει αυτόματα πριν από migrations και το κρατά ως artifact 30 ημέρες). Restore σε νέα βάση: `wrangler d1 execute <db> --remote --file prod-YYYYMMDD.sql`.
-- **D1 Time Travel:** `npx wrangler d1 time-travel info gta-florida-production` / `… restore` (point-in-time· διαθέσιμο παράθυρο ανά plan — ελέγξτε τα docs).
+- **D1 snapshot:** `npx wrangler d1 export gta-or-florida-production --remote --env production --output prod-YYYYMMDD.sql` (το deploy workflow το κάνει αυτόματα πριν από migrations και το κρατά ως artifact 30 ημέρες). Restore σε νέα βάση: `wrangler d1 execute <db> --remote --file prod-YYYYMMDD.sql`.
+- **D1 Time Travel:** `npx wrangler d1 time-travel info gta-or-florida-production` / `… restore` (point-in-time· διαθέσιμο παράθυρο ανά plan — ελέγξτε τα docs).
 - **Worker:** `npx wrangler deployments list --env production` και `npx wrangler rollback --env production` (προηγούμενη έκδοση).
 - Migrations: μόνο backward-compatible αλλαγές όπου γίνεται (νέες στήλες/πίνακες)· ποτέ destructive χωρίς export.
 
