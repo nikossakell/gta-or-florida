@@ -7,6 +7,7 @@
  * `questions:approve` runs an SSRF-safe link check from this machine first.
  */
 import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { userInfo } from 'node:os';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import { POLICY_VERSION } from '@gof/config';
@@ -192,7 +193,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL: a plain `file://${argv[1]}` never matches on Windows (backslashes, drive letter).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().then(
     (code) => process.exit(code),
     (error) => {

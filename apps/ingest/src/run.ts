@@ -9,6 +9,7 @@
  * --dry-run: no Worker calls, no writes; prints what would be imported.
  */
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { formatIssues, importItemSchema, parse, type RunReport } from '@gof/core';
@@ -164,7 +165,8 @@ export async function main(argv = process.argv.slice(2)) {
   return status === 'failed' ? 1 : 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL: a plain `file://${argv[1]}` never matches on Windows (backslashes, drive letter).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().then(
     (code) => process.exit(code),
     (error) => {

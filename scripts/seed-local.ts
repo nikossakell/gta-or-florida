@@ -8,6 +8,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import type { ImportItem, QuestionBankFile } from '@gof/core';
 import { createWorkerClient } from '../apps/ingest/src/import.ts';
@@ -77,7 +78,8 @@ async function main() {
   console.log(`Scheduled ${s.added.length} new day(s); kept ${s.kept.length}. Open http://localhost:5173`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL: a plain `file://${argv[1]}` never matches on Windows (backslashes, drive letter).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((e) => {
     console.error((e as Error).message);
     process.exit(1);
