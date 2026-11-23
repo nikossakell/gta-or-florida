@@ -1,18 +1,13 @@
-# Netlify: fully static build (same output as GitHub Pages, served from "/").
-# Node version comes from .nvmrc; dependencies are installed automatically.
-#
-# Daily publishing: Netlify has no cron for builds. .github/workflows/netlify-daily.yml
-# calls a Netlify build hook every day after 00:00 UTC (see README → Netlify).
-
+# LEGACY — the fully static demo (placeholder content from data/*.json) that is live today.
+# Keep it serving users until the Cloudflare Pages + Worker production is verified
+# (README_DEPLOYMENT.md, "Cutover"). Then delete this file, .github/workflows/netlify-daily.yml
+# and the Netlify site. The Node API proxy mode was removed with the Node server.
 [build]
-  # ALLOW_PLACEHOLDER_CONTENT defaults to true for the sample data. Set it to "false"
-  # in Site configuration → Environment variables once real questions are in place
-  # (variables set in netlify.toml would override the UI, so it is set here instead).
+  # (Variables set in netlify.toml would override the UI, so the default is set inline.)
   command = "ALLOW_PLACEHOLDER_CONTENT=${ALLOW_PLACEHOLDER_CONTENT:-true} npm run build:pages"
   publish = "apps/web/dist-pages"
 
-# Missing data files must be real 404s (e.g. today's round not published yet),
-# not the SPA shell. Redirects without `force` only apply when no file exists.
+# Missing data files must be real 404s (e.g. today's round not published yet), not the SPA shell.
 [[redirects]]
   from = "/data/*"
   to = "/404.html"
@@ -24,7 +19,6 @@
   to = "/index.html"
   status = 200
 
-# Same security headers as the Node API (apps/api/src/app.ts).
 [[headers]]
   for = "/*"
   [headers.values]
@@ -35,13 +29,11 @@
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
 
-# Hashed Vite assets never change.
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# Round data changes with each daily rebuild: always revalidate.
 [[headers]]
   for = "/data/*"
   [headers.values]

@@ -15,7 +15,7 @@ export function AnswerBadge({ question }: { question: RevealedQuestion }) {
   }
   return (
     <p className="label-wide bg-pink text-ink inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs sm:text-sm">
-      <JoystickIcon size={18} /> {question.gtaSubtype === 'gta_lore' ? 'GTA lore · Actual game event' : 'GTA-style · Fictional'}
+      <JoystickIcon size={18} /> {question.gtaSubtype === 'gta_lore' ? `GTA · ${question.game ?? 'In-game event'}` : 'GTA-style · Sample'}
     </p>
   );
 }
@@ -30,6 +30,15 @@ export function AnswerDetails({ question }: { question: RevealedQuestion }) {
       {question.answer === 'gta' && question.gtaSubtype !== 'gta_lore' && (
         <p className="text-cream mt-4 font-semibold">Fictional GTA-style scenario.</p>
       )}
+      {question.answer === 'gta' && question.gtaSubtype === 'gta_lore' && (
+        <p className="text-cream mt-4 font-semibold">A documented event from the games{question.game ? ` (${question.game})` : ''} — fiction inside the game world.</p>
+      )}
+      {question.originalTitle && (
+        <p className="mt-4">
+          <span className="label-wide text-dim block text-xs">Original headline</span>
+          <q className="font-semibold">{question.originalTitle}</q>
+        </p>
+      )}
       <p className="text-muted mt-3 leading-relaxed">{question.explanation}</p>
       {question.sourceUrl ? (
         <a
@@ -40,7 +49,7 @@ export function AnswerDetails({ question }: { question: RevealedQuestion }) {
         >
           <LinkIcon size={20} />
           <span>
-            Read original report
+            {question.sourceCta ?? (question.answer === 'gta' ? 'View GTA source' : 'Read full article')}
             <span className="text-muted block text-sm font-normal">
               {[question.sourceName, question.publishedAt && publishedDay(question.publishedAt)].filter(Boolean).join(' · ')}
             </span>

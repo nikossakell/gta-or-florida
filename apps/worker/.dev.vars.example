@@ -1,0 +1,4 @@
+# Copy to apps/worker/.dev.vars (git-ignored) for `wrangler dev`, or let `npm run dev:seed` generate it.
+# Local-only values. Staging/production secrets are set with `wrangler secret put … --env <env>`.
+INGESTION_IMPORT_TOKEN=replace-with-64-hex-chars-from-openssl-rand-hex-32
+ADMIN_TOKEN=replace-with-a-different-64-hex-chars-value

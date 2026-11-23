@@ -1,0 +1,14 @@
+{
+  "name": "@gof/ingest",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Node batch ingestion (GitHub Actions): discovery, verification, Workers AI classification, authenticated import into the Worker.",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gof/config": "*",
+    "@gof/core": "*"
+  }
+}

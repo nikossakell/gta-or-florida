@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { challengeQuery } from '../api/queries.ts';
+import { useUtcDay } from '../lib/useUtcDay.ts';
 import { ApiError } from '../api/client.ts';
 import { SunsetGator } from '../components/Gator.tsx';
 import { CalendarIcon, PlayIcon, RetryIcon } from '../components/Icons.tsx';
@@ -24,7 +25,8 @@ function Pitch({ count, seconds }: { count: number; seconds: number }) {
 }
 
 function TodayCta() {
-  const today = useQuery(challengeQuery('today'));
+  const utcDay = useUtcDay();
+  const today = useQuery(challengeQuery('today', utcDay));
 
   if (today.isPending) {
     return (
@@ -38,17 +40,21 @@ function TodayCta() {
 
   if (today.isError) {
     const err = today.error;
-    const noChallenge = err instanceof ApiError && err.code === 'NO_CHALLENGE';
+    const code = err instanceof ApiError ? err.code : '';
+    const noChallenge = code === 'DAILY_NOT_READY';
+    const withdrawn = code === 'ROUND_WITHDRAWN';
     return (
       <div className="flex flex-col gap-4">
-        <div className="card p-6 text-left" role={noChallenge ? 'status' : 'alert'}>
-          <p className="font-display text-sun text-3xl">{noChallenge ? 'No headlines yet today' : 'Stuck in traffic'}</p>
+        <div className="card p-6 text-left" role={noChallenge || withdrawn ? 'status' : 'alert'}>
+          <p className="font-display text-sun text-3xl">{noChallenge ? 'No headlines yet today' : withdrawn ? 'Round withdrawn' : 'Stuck in traffic'}</p>
           <p className="text-muted mt-2">
             {noChallenge
               ? 'Today’s round hasn’t been published. We never recycle or invent questions to fill a gap — try a past round instead.'
-              : 'We couldn’t load today’s headlines. Check your connection, then try again.'}
+              : withdrawn
+                ? err.message
+                : 'We couldn’t load today’s headlines. Check your connection, then try again.'}
           </p>
-          {!noChallenge && <p className="text-dim mt-2 font-mono text-sm">Error {err instanceof ApiError ? err.code : 'UNKNOWN'}</p>}
+          {!noChallenge && !withdrawn && <p className="text-dim mt-2 font-mono text-sm">Error {err instanceof ApiError ? err.code : 'UNKNOWN'}</p>}
         </div>
         {!noChallenge && (
           <Button onClick={() => today.refetch()}>
@@ -87,7 +93,8 @@ function TodayCta() {
 }
 
 export function Landing() {
-  const today = useQuery(challengeQuery('today'));
+  const utcDay = useUtcDay();
+  const today = useQuery(challengeQuery('today', utcDay));
   const count = today.data?.questions.length ?? 5;
   const seconds = today.data?.timeLimitSeconds ?? 60;
 
@@ -123,7 +130,7 @@ export function Landing() {
             ))}
           </ol>
           <p className="text-dim mt-6 text-sm">
-            “GTA” here means a fictional GTA-style scenario written for this game, not an event from an actual Grand Theft Auto title.
+            “GTA” answers are documented events from actual Grand Theft Auto games (in-game newspapers, missions, random events), each linked to its source.
           </p>
           <Disclaimer className="mt-6 lg:text-left" />
         </div>

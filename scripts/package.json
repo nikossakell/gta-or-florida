@@ -3,8 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Local CLI ingestion, validation and scheduling tools. Never run in the browser.",
+  "description": "Repository tooling: static-demo builder, fixture validation, config checks, local seeding and smoke tests. Never run in the browser.",
   "dependencies": {
+    "@gof/config": "*",
     "@gof/core": "*"
   },
   "scripts": {

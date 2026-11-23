@@ -1,0 +1,71 @@
+// Cloudflare Worker API for GTA or Florida?
+// Bindings are NOT inherited between environments, so each env declares its own.
+// database_id values for staging/production MUST be replaced with the real UUIDs printed by
+//   npx wrangler d1 create gta-florida-staging      (and …-production)
+// The deploy workflow refuses to run while a placeholder is present.
+// Secrets (never in this file): wrangler secret put INGESTION_IMPORT_TOKEN --env <env>
+//                               wrangler secret put ADMIN_TOKEN --env <env>
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "gta-florida-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+  "workers_dev": true,
+  "env": {
+    // `npm run dev:worker` — local workerd + local D1 emulator (.wrangler/state, git-ignored).
+    "local": {
+      "vars": {
+        "APP_ENV": "local",
+        "AUTO_PUBLISH_MODE": "shadow",
+        "FRONTEND_ORIGIN": "http://localhost:5173",
+        "EXTRA_ORIGINS": "http://127.0.0.1:5173,http://localhost:4173"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "gta-florida-local",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations"
+        }
+      ]
+    },
+    "staging": {
+      "vars": {
+        "APP_ENV": "staging",
+        "AUTO_PUBLISH_MODE": "shadow",
+        // Pages preview deployments: https://<hash-or-branch>.<project>.pages.dev
+        "PAGES_PREVIEW_PROJECT": "gta-or-florida",
+        "FRONTEND_ORIGIN": "https://staging.gta-or-florida.pages.dev"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "gta-florida-staging",
+          "database_id": "REPLACE_WITH_STAGING_DATABASE_ID",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "ratelimits": [{ "name": "RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }],
+      "triggers": { "crons": ["5 0 * * *", "30 12 * * *"] }
+    },
+    "production": {
+      "vars": {
+        "APP_ENV": "production",
+        // off | shadow | trusted_sources — stays shadow until the owner has a benchmark (README_DEPLOYMENT.md).
+        "AUTO_PUBLISH_MODE": "shadow",
+        "FRONTEND_ORIGIN": "https://gta-or-florida.pages.dev"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "gta-florida-production",
+          "database_id": "REPLACE_WITH_PRODUCTION_DATABASE_ID",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "ratelimits": [{ "name": "RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }],
+      "triggers": { "crons": ["5 0 * * *", "30 12 * * *"] }
+    }
+  }
+}

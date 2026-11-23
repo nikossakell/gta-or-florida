@@ -1,0 +1,33 @@
+name: Daily heartbeat
+
+# Synthetic check of the production Worker after the UTC rollover: health, today's
+# round playable, no answer leakage, CORS and admin protection. Fails (→ GitHub
+# notification) when today's round is missing — the signal to approve more stock.
+on:
+  schedule:
+    - cron: '40 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-production
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    if: ${{ vars.SMOKE_URL != '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run smoke -- "${{ vars.SMOKE_URL }}"
+        env:
+          REQUIRE_TODAY: '1'

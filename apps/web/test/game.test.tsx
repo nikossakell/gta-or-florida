@@ -51,9 +51,11 @@ function mockApi() {
           id: body.questionId,
           headline: challenge.questions.find((q) => q.id === body.questionId)!.headline,
           answer,
-          explanation: answer === 'florida' ? 'Reported by Example News.' : 'Original scenario written for this game.',
+          explanation: answer === 'florida' ? 'Reported by Example News.' : 'An in-game newspaper story documented on the wiki.',
           placeholder: false,
-          ...(answer === 'florida' ? { sourceUrl: 'https://news.example/iguana', sourceName: 'Example News', publishedAt: '2026-10-01' } : { gtaSubtype: 'fiction' }),
+          ...(answer === 'florida'
+            ? { sourceUrl: 'https://news.example/iguana', sourceName: 'Example News', sourceCta: 'Read full article', publishedAt: '2026-10-01', originalTitle: 'Exact Example Headline' }
+            : { gtaSubtype: 'gta_lore', game: 'GTA III', sourceUrl: 'https://wiki.example/issue#story', sourceName: 'Grand Theft Wiki', sourceCta: 'View GTA source' }),
         },
       });
     }
@@ -81,7 +83,7 @@ describe('QuestionView', () => {
   it('exposes two large, labeled answer buttons and keyboard shortcuts', async () => {
     const onChoose = vi.fn();
     render(<QuestionView question={{ id: 'x', headline: 'Something odd happened' }} onChoose={onChoose} busy={false} error={null} timed />);
-    const gta = screen.getByRole('button', { name: /GTA.*Fictional scenario/i });
+    const gta = screen.getByRole('button', { name: /GTA.*Happened in a game/i });
     const florida = screen.getByRole('button', { name: /FLORIDA.*Real report/i });
     expect(screen.getByRole('heading', { name: 'Something odd happened' })).toHaveFocus();
     await userEvent.click(gta);
@@ -115,14 +117,21 @@ describe('GameSession', () => {
 
     await user.click(await screen.findByRole('button', { name: /FLORIDA/ }));
     expect(await screen.findByRole('heading', { name: 'Correct!' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Read original report/ })).toHaveAttribute('href', 'https://news.example/iguana');
+    const article = screen.getByRole('link', { name: /Read full article/ });
+    expect(article).toHaveAttribute('href', 'https://news.example/iguana');
+    expect(article).toHaveAttribute('target', '_blank');
+    expect(article.getAttribute('rel')).toMatch(/noopener/);
+    expect(article.getAttribute('rel')).toMatch(/noreferrer/);
+    expect(screen.getByText('Exact Example Headline')).toBeInTheDocument();
     expect(screen.getByRole('timer')).toHaveAccessibleName(/paused/);
     expect(getProgress('2026-11-19')).toMatchObject({ index: 0, phase: 'reveal' });
 
     await user.click(screen.getByRole('button', { name: /Next headline/ }));
     await user.click(await screen.findByRole('button', { name: /FLORIDA/ }));
     expect(await screen.findByRole('heading', { name: 'Not quite.' })).toBeInTheDocument();
-    expect(screen.getByText('Fictional GTA-style scenario.')).toBeInTheDocument();
+    expect(screen.getByText(/A documented event from the games \(GTA III\)/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /View GTA source/ })).toHaveAttribute('href', 'https://wiki.example/issue#story');
+    expect(screen.queryByText('Original headline')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: /See my results/ }));
     await waitFor(() => expect(completed).not.toBeNull());
@@ -156,5 +165,14 @@ describe('GameSession', () => {
     await user.click(await screen.findByRole('button', { name: /GTA/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/Connection hiccup/);
     expect(screen.getByRole('button', { name: /GTA/ })).toBeEnabled();
+  });
+});
+
+describe('AnswerDetails', () => {
+  it('labels development fiction as fiction and shows no source', async () => {
+    const { AnswerDetails } = await import('../src/features/game/RevealView.tsx');
+    render(<AnswerDetails question={{ id: 'h1', headline: 'x', answer: 'gta', gtaSubtype: 'fiction', explanation: 'Sample.', placeholder: true }} />);
+    expect(screen.getByText('Fictional GTA-style scenario.')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 });

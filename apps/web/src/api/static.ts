@@ -59,7 +59,7 @@ export function createStaticApi(baseUrl: string, now: () => Date = () => new Dat
       return { ...c, today };
     } catch (error) {
       if (error instanceof ApiError && error.code === 'NOT_FOUND' && date === today) {
-        throw new ApiError('NO_CHALLENGE', 'No challenge is published for today yet.', 404);
+        throw new ApiError('DAILY_NOT_READY', 'No challenge is published for today yet.', 503);
       }
       throw error;
     }

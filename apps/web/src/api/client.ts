@@ -30,6 +30,25 @@ export class ApiError extends Error {
 
 const TIMEOUT_MS = 10_000;
 
+/**
+ * API origin from the build (Cloudflare Pages: VITE_API_BASE_URL per Preview/Production).
+ * Only https origins (or http on localhost) are accepted; anything else falls back to same-origin.
+ */
+export function apiBase(raw: string | undefined = import.meta.env.VITE_API_BASE_URL): string {
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    if (url.protocol === 'https:' || (local && url.protocol === 'http:')) return url.origin;
+  } catch {
+    // fall through
+  }
+  console.warn('Ignoring invalid VITE_API_BASE_URL; using same-origin /api');
+  return '';
+}
+
+const API_BASE = apiBase();
+
 export function withTimeout(signal?: AbortSignal | null): AbortSignal {
   const timeout = AbortSignal.timeout(TIMEOUT_MS);
   if (!signal) return timeout;
@@ -39,8 +58,10 @@ export function withTimeout(signal?: AbortSignal | null): AbortSignal {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await fetch(`${API_BASE}${path}`, {
       ...init,
+      // Public API: no cookies or credentials, ever.
+      credentials: 'omit',
       headers: { accept: 'application/json', ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
       signal: withTimeout(init.signal),
     });
@@ -64,7 +85,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-/** Talks to the Node API (apps/api). */
+/** Talks to the Cloudflare Worker API (apps/worker). */
 export const httpApi = {
   challenge: (id: 'today' | string, signal?: AbortSignal) =>
     request<ChallengeResponse>(`/api/challenge/${encodeURIComponent(id)}`, signal ? { signal } : {}),

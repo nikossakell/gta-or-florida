@@ -1,9 +1,12 @@
 /**
  * Domain model for GTA or Florida?
  *
- * "gta" always means *fictional GTA-style scenario* — never a claim that the
- * event happened in an actual Grand Theft Auto game.
+ * "florida" = a real, verified incident in Florida backed by a publisher article.
+ * "gta"     = a documented in-universe event from an actual GTA game (`gta_lore`,
+ *             backed by a game reference), or — in development fixtures only —
+ *             an original fictional scenario (`fiction`, placeholder content).
  */
+import type { ContentKind, GtaGame } from './content.ts';
 
 export const ANSWERS = ['florida', 'gta'] as const;
 export type Answer = (typeof ANSWERS)[number];
@@ -18,8 +21,9 @@ export const DIFFICULTIES = [1, 2, 3] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
 /**
- * Sub-type of a GTA answer. MVP only ships `fiction`. `gta_lore` is reserved
- * for independently verified events from actual GTA titles and must cite a source.
+ * Sub-type of a GTA answer. `gta_lore` = documented event from an actual GTA
+ * title (content kind GTA_CANON) and must cite a source. `fiction` is only used
+ * by development placeholder fixtures.
  */
 export const GTA_SUBTYPES = ['fiction', 'gta_lore'] as const;
 export type GtaSubtype = (typeof GTA_SUBTYPES)[number];
@@ -35,6 +39,17 @@ export type Question = {
   canonicalEventId: string;
   /** Only meaningful when answer === 'gta'. Defaults to 'fiction'. */
   gtaSubtype?: GtaSubtype;
+  /** Content kind from the SQLite question bank (absent for legacy JSON fixtures). */
+  kind?: ContentKind;
+  /** Verified GTA title, revealed only after answering. */
+  game?: GtaGame;
+  /**
+   * Exact source headline. Only set when the source's rights review is
+   * `exact_headline_allowed`; never shown before answering.
+   */
+  originalTitle?: string;
+  /** Call-to-action label for the source link ("Read full article", "View GTA source"). */
+  sourceCta?: string;
   sourceUrl?: string;
   sourceName?: string;
   publishedAt?: string;
@@ -69,6 +84,11 @@ export type RevealedQuestion = {
   explanation: string;
   sourceUrl?: string;
   sourceName?: string;
+  sourceCta?: string;
+  /** Present only when the exact headline is cleared for display. */
+  originalTitle?: string;
+  /** Human-readable GTA title, e.g. "GTA III". */
+  game?: string;
   publishedAt?: string;
   placeholder: boolean;
 };

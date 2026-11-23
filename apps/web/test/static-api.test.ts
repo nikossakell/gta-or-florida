@@ -57,9 +57,9 @@ describe('static data source (GitHub Pages)', () => {
     expect(fetchMock).toHaveBeenCalledWith('/gta-or-florida/data/challenge/2026-11-19.json', expect.anything());
   });
 
-  it('reports NO_CHALLENGE when today’s file is not deployed yet', async () => {
+  it('reports DAILY_NOT_READY when today’s file is not deployed yet', async () => {
     serve(files);
-    await expect(at('2026-11-20T00:01:00Z').challenge('today')).rejects.toMatchObject({ code: 'NO_CHALLENGE' });
+    await expect(at('2026-11-20T00:01:00Z').challenge('today')).rejects.toMatchObject({ code: 'DAILY_NOT_READY' });
   });
 
   it('refuses future dates without fetching', async () => {

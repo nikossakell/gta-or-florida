@@ -1,9 +1,9 @@
 {
   "name": "gta-or-florida",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "GTA or Florida? \u2014 a daily trivia game: real Florida news or a fictional GTA-style scenario?",
+  "description": "GTA or Florida? \u2014 a daily trivia game: real Florida news or a documented GTA in-game event? (Cloudflare Pages + Workers + D1)",
   "engines": {
     "node": ">=22.12"
   },
@@ -13,26 +13,35 @@
     "scripts"
   ],
   "scripts": {
-    "dev": "concurrently -k -n api,web -c magenta,cyan \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "npm run dev -w @gof/api",
+    "dev": "concurrently -k -n worker,web -c magenta,cyan \"npm:dev:worker\" \"npm:dev:web\"",
+    "dev:worker": "tsx scripts/seed-local.ts --vars-only && npm run db:migrate:local && npm run dev -w @gof/worker",
     "dev:web": "npm run dev -w @gof/web",
-    "build": "npm run build -w @gof/web && npm run build -w @gof/api",
+    "dev:seed": "tsx --env-file-if-exists=.env scripts/seed-local.ts",
+    "db:migrate:local": "npm run db:migrate:local -w @gof/worker",
+    "build": "npm run build -w @gof/web && npm run build -w @gof/worker",
+    "build:web": "npm run build -w @gof/web",
     "build:pages": "npm run build:pages -w @gof/web && tsx scripts/build-pages.ts",
     "preview:pages": "npm run preview -w @gof/web -- --mode pages",
-    "start": "node --env-file-if-exists=.env apps/api/dist/server.js",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
-    "validate": "tsx scripts/validate-questions.ts",
+    "validate": "tsx scripts/validate-questions.ts && tsx scripts/check-config.ts",
     "schedule:build": "tsx scripts/build-daily-schedule.ts",
-    "import:gdelt": "tsx scripts/import-gdelt.ts",
-    "ci": "npm run typecheck && npm run test && npm run validate"
+    "ci": "npm run typecheck && npm run test && npm run validate",
+    "ingest:batch": "tsx --env-file-if-exists=.env apps/ingest/src/run.ts",
+    "admin": "tsx --env-file-if-exists=.env apps/ingest/src/admin.ts",
+    "legacy:export": "tsx apps/ingest/src/legacy.ts export",
+    "legacy:import": "tsx --env-file-if-exists=.env apps/ingest/src/legacy.ts import",
+    "smoke": "tsx scripts/smoke.ts",
+    "deploy:worker:staging": "npm run deploy:staging -w @gof/worker",
+    "deploy:worker:production": "npm run deploy:production -w @gof/worker"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "concurrently": "^10.0.7",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.1",
+    "yaml": "^2.9.1"
   }
 }

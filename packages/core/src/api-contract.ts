@@ -41,19 +41,27 @@ export type ArchiveEntry = { date: string; number: number; challengeId: string; 
 
 export type ArchiveResponse = { today: string; days: ArchiveEntry[] };
 
+/** GET /api/health: liveness only. No secrets, paths, bindings or inventory internals. */
 export type HealthResponse = {
   status: 'ok' | 'degraded';
   time: string;
-  questions: number;
-  scheduledDays: number;
-  todayScheduled: boolean;
-  dataError?: string;
+  version: string;
+  runtime: 'cloudflare-workers';
+  db: 'ok' | 'error';
+  todayReady: boolean;
 };
 
 export const API_ERROR_CODES = [
   'BAD_REQUEST',
+  'DAILY_NOT_READY',
+  'ROUND_WITHDRAWN',
+  'QUESTION_NOT_FOUND',
+  'UNAUTHORIZED',
+  'FORBIDDEN',
+  'CONFLICT',
+  'IDEMPOTENCY_CONFLICT',
+  'VALIDATION_FAILED',
   'NOT_FOUND',
-  'NO_CHALLENGE',
   'FUTURE_CHALLENGE',
   'CONTENT_UNAVAILABLE',
   'METHOD_NOT_ALLOWED',

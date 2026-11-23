@@ -40,7 +40,7 @@ export function QuestionView({
   return (
     <div className="animate-pop">
       <section className="card mt-7 p-7 sm:p-8" aria-labelledby={`q-${question.id}`}>
-        <p className="label-wide text-dim text-xs sm:text-sm">Real report or game scenario?</p>
+        <p className="label-wide text-dim text-xs sm:text-sm">Real Florida news or a GTA game?</p>
         <h1
           id={`q-${question.id}`}
           ref={headingRef}
@@ -62,7 +62,7 @@ export function QuestionView({
         >
           <JoystickIcon size={34} />
           <span className="btn-wide text-3xl sm:text-4xl">GTA</span>
-          <span className="font-semibold">Fictional scenario</span>
+          <span className="font-semibold">Happened in a game</span>
         </button>
         <button
           type="button"

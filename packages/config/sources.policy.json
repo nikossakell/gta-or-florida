@@ -1,0 +1,493 @@
+{
+  "$comment": [
+    "Owner-reviewed source usage policy. ONLY the project owner edits licenseStatus / can* / autoPublishAllowed, after reading each source's terms.",
+    "A model, an API response or an indexer never grants rights. Unknown hosts are treated as unreviewed (fail closed).",
+    "Bump policyVersion whenever a permission changes; auto-publish benchmarks are tied to it."
+  ],
+  "policyVersion": "2026-11-22.1",
+  "sources": [
+    {
+      "id": "grandtheftwiki",
+      "type": "gta_wiki",
+      "name": "Grand Theft Wiki",
+      "hosts": [
+        "grandtheftwiki.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "termsUrl": "https://www.grandtheftwiki.com/Grand_Theft_Wiki:Licensing",
+      "notes": "Evidence for documented in-game events only. Wiki text licence (see termsUrl) does not cover Rockstar's own in-game newspaper text, images or other first-party material quoted on the wiki. Owner must review before approving."
+    },
+    {
+      "id": "publisher:miamiherald.com",
+      "type": "publisher",
+      "name": "miamiherald.com",
+      "hosts": [
+        "miamiherald.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:tampabay.com",
+      "type": "publisher",
+      "name": "tampabay.com",
+      "hosts": [
+        "tampabay.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:orlandosentinel.com",
+      "type": "publisher",
+      "name": "orlandosentinel.com",
+      "hosts": [
+        "orlandosentinel.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:sun-sentinel.com",
+      "type": "publisher",
+      "name": "sun-sentinel.com",
+      "hosts": [
+        "sun-sentinel.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:palmbeachpost.com",
+      "type": "publisher",
+      "name": "palmbeachpost.com",
+      "hosts": [
+        "palmbeachpost.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:jacksonville.com",
+      "type": "publisher",
+      "name": "jacksonville.com",
+      "hosts": [
+        "jacksonville.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:tallahassee.com",
+      "type": "publisher",
+      "name": "tallahassee.com",
+      "hosts": [
+        "tallahassee.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:news-press.com",
+      "type": "publisher",
+      "name": "news-press.com",
+      "hosts": [
+        "news-press.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:heraldtribune.com",
+      "type": "publisher",
+      "name": "heraldtribune.com",
+      "hosts": [
+        "heraldtribune.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:floridatoday.com",
+      "type": "publisher",
+      "name": "floridatoday.com",
+      "hosts": [
+        "floridatoday.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:tcpalm.com",
+      "type": "publisher",
+      "name": "tcpalm.com",
+      "hosts": [
+        "tcpalm.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:pnj.com",
+      "type": "publisher",
+      "name": "pnj.com",
+      "hosts": [
+        "pnj.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:naplesnews.com",
+      "type": "publisher",
+      "name": "naplesnews.com",
+      "hosts": [
+        "naplesnews.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:gainesville.com",
+      "type": "publisher",
+      "name": "gainesville.com",
+      "hosts": [
+        "gainesville.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:theledger.com",
+      "type": "publisher",
+      "name": "theledger.com",
+      "hosts": [
+        "theledger.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:wfla.com",
+      "type": "publisher",
+      "name": "wfla.com",
+      "hosts": [
+        "wfla.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:wtsp.com",
+      "type": "publisher",
+      "name": "wtsp.com",
+      "hosts": [
+        "wtsp.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:fox13news.com",
+      "type": "publisher",
+      "name": "fox13news.com",
+      "hosts": [
+        "fox13news.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:wesh.com",
+      "type": "publisher",
+      "name": "wesh.com",
+      "hosts": [
+        "wesh.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:clickorlando.com",
+      "type": "publisher",
+      "name": "clickorlando.com",
+      "hosts": [
+        "clickorlando.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:wsvn.com",
+      "type": "publisher",
+      "name": "wsvn.com",
+      "hosts": [
+        "wsvn.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:local10.com",
+      "type": "publisher",
+      "name": "local10.com",
+      "hosts": [
+        "local10.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:nbcmiami.com",
+      "type": "publisher",
+      "name": "nbcmiami.com",
+      "hosts": [
+        "nbcmiami.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:wpbf.com",
+      "type": "publisher",
+      "name": "wpbf.com",
+      "hosts": [
+        "wpbf.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:news4jax.com",
+      "type": "publisher",
+      "name": "news4jax.com",
+      "hosts": [
+        "news4jax.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:actionnewsjax.com",
+      "type": "publisher",
+      "name": "actionnewsjax.com",
+      "hosts": [
+        "actionnewsjax.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:firstcoastnews.com",
+      "type": "publisher",
+      "name": "firstcoastnews.com",
+      "hosts": [
+        "firstcoastnews.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:keysweekly.com",
+      "type": "publisher",
+      "name": "keysweekly.com",
+      "hosts": [
+        "keysweekly.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+    },
+    {
+      "id": "publisher:theonion.com",
+      "type": "publisher",
+      "name": "theonion.com",
+      "hosts": [
+        "theonion.com"
+      ],
+      "licenseStatus": "blocked",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "reviewedBy": "repository default",
+      "reviewedAt": "2026-11-22",
+      "notes": "Satire/parody publisher: never a source of real events."
+    },
+    {
+      "id": "publisher:babylonbee.com",
+      "type": "publisher",
+      "name": "babylonbee.com",
+      "hosts": [
+        "babylonbee.com"
+      ],
+      "licenseStatus": "blocked",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "reviewedBy": "repository default",
+      "reviewedAt": "2026-11-22",
+      "notes": "Satire/parody publisher: never a source of real events."
+    },
+    {
+      "id": "publisher:clickhole.com",
+      "type": "publisher",
+      "name": "clickhole.com",
+      "hosts": [
+        "clickhole.com"
+      ],
+      "licenseStatus": "blocked",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "reviewedBy": "repository default",
+      "reviewedAt": "2026-11-22",
+      "notes": "Satire/parody publisher: never a source of real events."
+    },
+    {
+      "id": "publisher:thehardtimes.net",
+      "type": "publisher",
+      "name": "thehardtimes.net",
+      "hosts": [
+        "thehardtimes.net"
+      ],
+      "licenseStatus": "blocked",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "reviewedBy": "repository default",
+      "reviewedAt": "2026-11-22",
+      "notes": "Satire/parody publisher: never a source of real events."
+    },
+    {
+      "id": "publisher:waterfordwhispersnews.com",
+      "type": "publisher",
+      "name": "waterfordwhispersnews.com",
+      "hosts": [
+        "waterfordwhispersnews.com"
+      ],
+      "licenseStatus": "blocked",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "reviewedBy": "repository default",
+      "reviewedAt": "2026-11-22",
+      "notes": "Satire/parody publisher: never a source of real events."
+    },
+    {
+      "id": "publisher:newsthump.com",
+      "type": "publisher",
+      "name": "newsthump.com",
+      "hosts": [
+        "newsthump.com"
+      ],
+      "licenseStatus": "blocked",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "reviewedBy": "repository default",
+      "reviewedAt": "2026-11-22",
+      "notes": "Satire/parody publisher: never a source of real events."
+    },
+    {
+      "id": "publisher:dailymash.co.uk",
+      "type": "publisher",
+      "name": "dailymash.co.uk",
+      "hosts": [
+        "dailymash.co.uk"
+      ],
+      "licenseStatus": "blocked",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "reviewedBy": "repository default",
+      "reviewedAt": "2026-11-22",
+      "notes": "Satire/parody publisher: never a source of real events."
+    }
+  ]
+}

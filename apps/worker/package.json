@@ -1,0 +1,24 @@
+{
+  "name": "@gof/worker",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Cloudflare Worker API: public daily game + protected admin/import routes over Cloudflare D1.",
+  "scripts": {
+    "dev": "wrangler dev --env local --port 8787",
+    "db:migrate:local": "wrangler d1 migrations apply gta-florida-local --local --env local",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "build": "wrangler deploy --dry-run --env local --outdir dist",
+    "types": "wrangler types --env-interface Env src/worker-configuration.d.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test"
+  },
+  "dependencies": {
+    "@gof/config": "*",
+    "@gof/core": "*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261122.2",
+    "wrangler": "^4.166.0"
+  }
+}

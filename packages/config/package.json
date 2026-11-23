@@ -1,0 +1,16 @@
+{
+  "name": "@gof/config",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Owner-reviewed source policy registry and validated application constants (shared by Worker and ingestion).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gof/core": "*"
+  }
+}

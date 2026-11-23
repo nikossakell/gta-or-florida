@@ -1,3 +1,4 @@
+import { gtaGameLabel } from './content.ts';
 import type { Answer, PlayerChoice, PublicQuestion, Question, RevealedQuestion } from './types.ts';
 
 /**
@@ -35,7 +36,11 @@ export function toRevealedQuestion(q: Question, index: number): RevealedQuestion
   if (!q.placeholder) {
     if (q.sourceUrl) out.sourceUrl = q.sourceUrl;
     if (q.sourceName) out.sourceName = q.sourceName;
+    if (q.sourceUrl && q.sourceCta) out.sourceCta = q.sourceCta;
+    if (q.originalTitle) out.originalTitle = q.originalTitle;
     if (q.publishedAt) out.publishedAt = q.publishedAt;
+    const game = q.answer === 'gta' ? gtaGameLabel(q.game) : undefined;
+    if (game) out.game = game;
   }
   return out;
 }

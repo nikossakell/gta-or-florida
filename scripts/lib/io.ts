@@ -12,7 +12,6 @@ export const paths = {
   candidates: resolve(DATA_DIR, 'questions.candidates.json'),
   schedule: resolve(DATA_DIR, 'daily-schedule.json'),
   sources: resolve(DATA_DIR, 'sources.json'),
-  cache: resolve(REPO_ROOT, '.cache', 'gdelt'),
 };
 
 export async function readJson<T>(file: string): Promise<T> {

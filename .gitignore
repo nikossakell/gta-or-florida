@@ -9,3 +9,17 @@ coverage/
 !.env.example
 .DS_Store
 .netlify/
+# Cloudflare local state + local-only Worker secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+# Ingestion job reports (uploaded as short-lived CI artifacts instead)
+reports/
+# Legacy SQLite question bank (exported to backups/, never committed)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.db
+backups/

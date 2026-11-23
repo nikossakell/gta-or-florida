@@ -1,5 +1,7 @@
 name: Netlify daily rebuild
 
+# LEGACY: keeps the current static demo fresh until the Cloudflare cutover; delete with netlify.toml afterwards.
+
 # Netlify has no scheduled builds. This triggers a Netlify build hook every day
 # shortly after 00:00 UTC so each round is published on its own day.
 #
@@ -13,6 +15,10 @@ on:
   workflow_dispatch:
 
 permissions: {}
+
+concurrency:
+  group: netlify-daily
+  cancel-in-progress: true
 
 jobs:
   trigger:

@@ -1,3 +1,4 @@
+import { utcDate } from '@gof/core';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -10,7 +11,9 @@ import { getResult, type StoredResult } from '../lib/storage.ts';
 import { ResultsView } from './Results.tsx';
 
 export function PlayScreen({ id, practice = false }: { id: 'today' | string; practice?: boolean }) {
-  const query = useQuery(challengeQuery(id));
+  // Fixed for this visit: a round in progress at midnight is not swapped out mid-game.
+  const [utcDay] = useState(() => utcDate());
+  const query = useQuery(challengeQuery(id, utcDay));
   const navigate = useNavigate();
   const [practiceResult, setPracticeResult] = useState<StoredResult | null>(null);
 
@@ -28,19 +31,37 @@ export function PlayScreen({ id, practice = false }: { id: 'today' | string; pra
   if (query.isError) {
     const err = query.error;
     const code = err instanceof ApiError ? err.code : '';
-    if (code === 'NO_CHALLENGE' || code === 'NOT_FOUND' || code === 'FUTURE_CHALLENGE') {
+    if (code === 'ROUND_WITHDRAWN') {
+      // A published round was withdrawn after a correction: same message for everyone, never a silent substitute.
       return (
         <Column>
           <TopBar />
           <EmptyState
-            title={code === 'NO_CHALLENGE' ? 'No headlines today' : code === 'FUTURE_CHALLENGE' ? 'No peeking' : 'Round not found'}
+            title="Round withdrawn"
             action={
               <ButtonLink to="/archive" variant="secondary" className="w-full">
                 Browse past rounds
               </ButtonLink>
             }
           >
-            {code === 'NO_CHALLENGE'
+            {err.message}
+          </EmptyState>
+        </Column>
+      );
+    }
+    if (code === 'DAILY_NOT_READY' || code === 'NOT_FOUND' || code === 'FUTURE_CHALLENGE') {
+      return (
+        <Column>
+          <TopBar />
+          <EmptyState
+            title={code === 'DAILY_NOT_READY' ? 'No headlines today' : code === 'FUTURE_CHALLENGE' ? 'No peeking' : 'Round not found'}
+            action={
+              <ButtonLink to="/archive" variant="secondary" className="w-full">
+                Browse past rounds
+              </ButtonLink>
+            }
+          >
+            {code === 'DAILY_NOT_READY'
               ? 'Today’s round hasn’t been published yet. We don’t recycle or invent questions to fill gaps — check back soon.'
               : code === 'FUTURE_CHALLENGE'
                 ? 'That round isn’t out yet. Come back on the day.'

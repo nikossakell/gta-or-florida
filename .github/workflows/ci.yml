@@ -8,9 +8,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -18,12 +23,26 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # No separate linter is configured in this repo; strict TypeScript is the static gate.
       - run: npm run typecheck
+      # Includes Worker tests against a local D1 (workerd) and ingestion tests with mocked HTTP/AI.
+      # No live GDELT, wiki or Workers AI calls.
       - run: npm test
-      # Fails on duplicate ids, missing Florida sources, invalid statuses,
-      # broken references, answer imbalance and cooldown violations.
+      # Fixture bank + source policy registry + wrangler env isolation + workflow YAML + .env.example coverage.
       - run: npm run validate
-      - run: npm run build
-      - run: npm run build:pages
+      - name: No committed secrets
+        run: |
+          if git grep -nIE '(INGESTION_IMPORT_TOKEN|ADMIN_TOKEN|CF_AI_API_TOKEN|CLOUDFLARE_API_TOKEN)\s*=\s*[A-Za-z0-9_-]{24,}' -- ':!*.example' ':!*.md'; then
+            echo "::error::Possible secret committed"; exit 1
+          fi
+      - name: Build web (Cloudflare Pages output)
+        run: npm run build:web
+      - name: Bundle Worker (wrangler dry run)
+        run: npm run build -w @gof/worker
+      - name: Local D1 migrations apply cleanly
+        working-directory: apps/worker
+        run: npx wrangler d1 migrations apply gta-florida-local --local --env local
+      - name: Legacy static demo still builds (live on Netlify until cutover)
+        run: npm run build:pages
         env:
           ALLOW_PLACEHOLDER_CONTENT: 'true'

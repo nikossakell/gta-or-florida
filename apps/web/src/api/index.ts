@@ -3,7 +3,7 @@ import { createStaticApi } from './static.ts';
 
 /**
  * `vite build --mode pages` → static JSON files (GitHub Pages, no server).
- * Any other mode → the Node API under /api.
+ * Any other mode → the Cloudflare Worker API (VITE_API_BASE_URL, or same-origin /api in dev).
  * Decided at build time, so the unused client is tree-shaken away.
  */
 export const isStaticSite = import.meta.env.MODE === 'pages';

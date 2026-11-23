@@ -28,7 +28,7 @@ export function About() {
       <Section title="How it works">
         <p>
           Every day at midnight UTC a new round goes live — the same headlines in the same order for everyone. Read each one and decide: is it a{' '}
-          <strong className="text-teal">real, reported Florida incident</strong>, or a <strong className="text-pink">fictional GTA-style scenario</strong>?
+          <strong className="text-teal">real, reported Florida incident</strong>, or a <strong className="text-pink">documented event from a GTA game</strong>?
         </p>
         <p>The clock pauses while each answer is revealed. Unanswered headlines count as misses. Share your score as a spoiler-free emoji grid.</p>
         <p>Keyboard: press G for GTA, F for Florida, Enter for the next headline.</p>
@@ -36,15 +36,21 @@ export function About() {
 
       <Section title="What “GTA” means here">
         <p>
-          “GTA” answers are <strong className="text-cream">original fictional scenarios written for this game</strong> in the spirit of open-world crime
-          capers. They are not events from any actual Grand Theft Auto game, and nothing here claims to be GTA VI canon.
+          “GTA” answers are <strong className="text-cream">events documented in actual Grand Theft Auto games</strong> — in-game newspaper stories,
+          missions and random events — so they are fiction inside the game world, not real news. Each one names the game after you answer and links to a
+          reference (for example{' '}
+          <a className={ext} href="https://www.grandtheftwiki.com/" target="_blank" rel="noopener noreferrer">
+            Grand Theft Wiki
+          </a>
+          ). We write our own short description; we never reproduce the games’ text, art or screenshots, and we never invent GTA events.
         </p>
       </Section>
 
       <Section title="Sources & attribution">
         <p>
-          Florida answers come from published news reports. Each real item links to the original article; we write our own short summary and never
-          republish article text or photos. Candidate stories are discovered with{' '}
+          Florida answers come from published news reports about incidents that took place in Florida. Each real item links to the original article; we
+          write our own short, neutral description (so the headline doesn’t give the answer away) and never republish article text or photos. The exact
+          original headline is shown after you answer only where we have cleared it. Candidate stories are discovered with{' '}
           <a className={ext} href="https://www.gdeltproject.org/" target="_blank" rel="noopener noreferrer">
             The GDELT Project
           </a>{' '}
