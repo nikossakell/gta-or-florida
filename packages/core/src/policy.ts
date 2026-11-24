@@ -37,7 +37,37 @@ export type SourcePolicy = {
   reviewedBy?: string;
   reviewedAt?: string;
   notes?: string;
+  /**
+   * Separate from rights: may our ingestion job FETCH this source's feed to collect candidate
+   * metadata (title, link, date, guid)? Says nothing about reusing content — `licenseStatus` and the
+   * can* flags still gate every question. Absent = unreviewed (feeds are not fetched).
+   */
+  feedAccess?: FeedAccess;
 };
+
+export const FEED_ACCESS_STATUSES = ['unreviewed', 'allowed', 'denied'] as const;
+export type FeedAccessStatus = (typeof FEED_ACCESS_STATUSES)[number];
+
+export type FeedAccess = {
+  status: FeedAccessStatus;
+  /** Official page(s) the decision rests on (terms of use, the publisher's RSS page). */
+  basis?: string[];
+  /** May headlines from this feed be sent to Workers AI for classification? Default false: human review only. */
+  aiClassification?: boolean;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  /** Research summary for the reviewer (what the terms say about feeds, automation, reuse, AI). */
+  findings?: string;
+};
+
+/** Whether the ingestion job may fetch this source's feed (rights-approved sources always may). */
+export function feedFetchAllowed(src: Pick<SourcePolicy, 'licenseStatus' | 'feedAccess'>): { ok: boolean; reason: string } {
+  if (src.licenseStatus === 'blocked') return { ok: false, reason: 'source is blocked' };
+  if (src.feedAccess?.status === 'denied') return { ok: false, reason: 'feed access denied by the owner' };
+  if (src.licenseStatus === 'approved') return { ok: true, reason: 'source rights approved' };
+  if (src.feedAccess?.status === 'allowed') return { ok: true, reason: 'feed access allowed by the owner (metadata only)' };
+  return { ok: false, reason: 'feed access not reviewed' };
+}
 
 /** Fallback for a host that is not in the registry: fail closed. */
 export function unreviewedSource(id: string, type: SourceType, name: string, hosts: string[]): SourcePolicy {

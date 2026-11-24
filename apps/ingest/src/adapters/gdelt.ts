@@ -154,6 +154,8 @@ export type FetchArticlesOptions = {
   jitterRatio?: number;
   random?: () => number;
   onRetry?: (attempt: number, error: GdeltError, waitMs: number) => void;
+  /** false: a 429 ends the request immediately (being told to slow down is not a transient error). */
+  retryRateLimited?: boolean;
 };
 
 export const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -199,7 +201,7 @@ export async function fetchGdeltArticles(url: URL, options: FetchArticlesOptions
       return await fetchOnce(url, settings);
     } catch (error) {
       const e = error instanceof GdeltError ? error : new GdeltError('network', String(error));
-      if (!e.retryable || attempt >= maxRetries) throw e;
+      if (!e.retryable || attempt >= maxRetries || (e.kind === 'rate_limited' && options.retryRateLimited === false)) throw e;
       // Being told to slow down earns a longer pause than a transient server error.
       const step = e.kind === 'rate_limited' ? base * 3 : base;
       const backoff = step * 2 ** attempt;

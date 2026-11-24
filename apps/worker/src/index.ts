@@ -64,7 +64,7 @@ export default {
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      ensureSchedule(env.DB, { now: new Date(), aheadDays: SCHEDULE_AHEAD_DAYS, allowFixtures: isLocal(env), actorId: 'cron', actorType: 'system' }).then(
+      ensureSchedule(env.DB, { now: new Date(), aheadDays: SCHEDULE_AHEAD_DAYS, allowFixtures: isLocal(env), actorId: 'cron', actorType: 'system', appEnv: env.APP_ENV }).then(
         (r) => console.log(`[cron] published ${r.published}, added ${r.added.length}, shortage ${r.shortageDate ?? 'none'}`),
         (e) => console.error('[cron] schedule failed', (e as Error)?.message ?? e),
       ),

@@ -41,12 +41,35 @@
         "SCAN_PAGE_SIZE": "25",
         "SCAN_CANDIDATES": "10",
         "PROCESS_BATCH": "4",
-        "MAX_LINK_CHECKS": "15",
-        "MAX_WIKI_PAGES": "15",
+        // Each link check costs up to 6 subrequests and each AI item 2: the plan rations them after the tail.
+        "MAX_LINK_CHECKS": "3",
+        "MAX_WIKI_PAGES": "8",
         "MAX_FEEDS": "5",
-        "MAX_AI_REQUESTS": "30",
+        "MAX_AI_REQUESTS": "12",
         "MAX_NEURONS": "2500",
-        "MAX_STEPS": "900"
+        "MAX_STEPS": "900",
+        // Florida primary source: DOJ press releases from FL U.S. Attorney's Offices (public domain). Convictions only.
+        "DOJ_ENABLED": "true",
+        "DOJ_LOOKBACK_DAYS": "2",
+        "DOJ_MAX_PAGES": "6",
+        "DOJ_INCLUDE_ALLEGATIONS": "false",
+        // Only unusual releases (animals, fakes, odd objects…) become candidates; routine prosecutions are recorded as NOT_UNUSUAL.
+        "DOJ_MIN_UNUSUAL": "2",
+        // Historical DOJ backfill runs as its OWN Workflow instances ({"mode":"backfill"}): one page per step,
+        // persisted cursor, one instance at a time (lease), each starts its successor until 365 days are covered.
+        // ~407 pages/year at ≤ 25 per instance ≈ 17 instances (each ≈ 1.5–2 min). The cron also (re)starts it.
+        "DOJ_BACKFILL_ENABLED": "true",
+        "DOJ_BACKFILL_DAYS": "365",
+        "DOJ_BACKFILL_PAGES_PER_RUN": "25",
+        "DOJ_BACKFILL_CHAIN": "true",
+        "DOJ_BACKFILL_LEASE_MINUTES": "60",
+        // Workers Free: 50 subrequests per invocation, NOT reset between steps, Service Binding calls included.
+        // Every step reserves its worst case (redirects, retries, link checks, AI, API) against this plan.
+        "SUBREQUEST_BUDGET": "45",
+        "TITLE_PAGES_PER_KIND": "2",
+        // Historical "Florida Man API" dataset: STAGING ONLY (refused in production by code, importer and validate).
+        "FM_DATASET_ENABLED": "true",
+        "FM_DATASET_DAYS_PER_RUN": "2"
       },
       "services": [{ "binding": "API", "service": "gta-florida-api-staging" }],
       "ai": { "binding": "AI" },
@@ -70,7 +93,14 @@
         "MAX_FEEDS": "5",
         "MAX_AI_REQUESTS": "30",
         "MAX_NEURONS": "2500",
-        "MAX_STEPS": "900"
+        "MAX_STEPS": "900",
+        "DOJ_ENABLED": "false",
+        "DOJ_INCLUDE_ALLEGATIONS": "false",
+        "DOJ_BACKFILL_ENABLED": "false",
+        "SUBREQUEST_BUDGET": "45",
+        "TITLE_PAGES_PER_KIND": "2",
+        // Never "true" in production (npm run validate fails).
+        "FM_DATASET_ENABLED": "false"
       },
       "services": [{ "binding": "API", "service": "gta-florida-api-production" }],
       "ai": { "binding": "AI" },

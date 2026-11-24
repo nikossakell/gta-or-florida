@@ -4,7 +4,7 @@
  * in-process. All seeded content is clearly fictional test data
  * (hosts are IANA-reserved example.org names).
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { getPlatformProxy } from 'wrangler';
@@ -21,7 +21,12 @@ export const SERVICE_TOKEN = 'test-service-token-0123456789abcdef01234567';
 
 /** Statements of the migration files, in order (comments stripped). */
 export function migrationStatements(): string[] {
-  const sql = readFileSync(resolve(workerDir, 'migrations/0001_init.sql'), 'utf8');
+  const dir = resolve(workerDir, 'migrations');
+  const sql = readdirSync(dir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => readFileSync(resolve(dir, f), 'utf8'))
+    .join('\n');
   return sql
     .split('\n')
     .map((line) => line.replace(/\s+--.*$/, '').replace(/^--.*$/, ''))
@@ -132,7 +137,17 @@ export async function seedSource(db: D1Database, src: SourcePolicy = APPROVED_PU
 export async function seedApproved(
   db: D1Database,
   side: 'FLORIDA' | 'GTA',
-  o: { sourceId?: string; fixture?: boolean; link?: string; title?: string } = {},
+  o: {
+    sourceId?: string;
+    fixture?: boolean;
+    link?: string;
+    title?: string;
+    provider?: string;
+    /** Approval provenance to record: licensed (default), factual_summary (fully attested), or none (legacy row). */
+    mode?: 'licensed' | 'factual_summary' | 'none';
+    /** Override the stored factual attestation (to test incomplete ones). */
+    factual?: Record<string, unknown>;
+  } = {},
 ): Promise<string> {
   const i = ++n;
   const kind = side === 'FLORIDA' ? 'FLORIDA_NEWS' : 'GTA_CANON';
@@ -149,12 +164,13 @@ export async function seedApproved(
     db
       .prepare(
         `INSERT INTO source_references (id, incident_id, source_id, provider, original_url, canonical_url, original_title, publisher, published_at, content_digest, link_status, checked_at)
-         VALUES (?, ?, ?, 'test', ?, ?, ?, ?, ?, 'deadbeefcafe', ?, '2026-11-20T00:00:00Z')`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'deadbeefcafe', ?, '2026-11-20T00:00:00Z')`,
       )
       .bind(
         ref,
         inc,
         o.sourceId ?? (side === 'FLORIDA' ? APPROVED_PUBLISHER.id : APPROVED_WIKI.id),
+        o.provider ?? 'test',
         `https://${host}/story-${i}`,
         `https://${host}/story-${i}`,
         `TEST ORIGINAL HEADLINE ${i}`,
@@ -167,8 +183,21 @@ export async function seedApproved(
         `INSERT INTO questions (id, incident_id, primary_reference_id, answer_kind, play_title, play_title_reviewed, explanation, difficulty, quality_state, approved_by, approved_at, approval_actor_type, is_fixture)
          VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'approved', 'tester', '2026-11-01', 'human', ?)`,
       )
-      .bind(q, inc, ref, side, o.title ?? `Test play title number ${i} about an odd event`, `SECRET-EXPLANATION for test question ${i}.`, (i % 3) + 1, o.fixture ? 1 : 0),
+      .bind(q, inc, ref, side, o.title ?? `Seeded prompt number ${i} about an odd event`, `SECRET-EXPLANATION for test question ${i}.`, (i % 3) + 1, o.fixture ? 1 : 0),
   ]);
+  const mode = o.mode ?? 'licensed';
+  if (mode !== 'none') {
+    const factual = o.factual ?? { humanWritten: true, incidentVerified: true, claimsVerified: true, privacyChecked: true, verifiedDate: '2026-11-01', verifiedLocation: side === 'FLORIDA' ? 'Ocala, Florida' : 'Liberty City', evidenceUrls: [`https://${host}/story-${i}`] };
+    const decision = mode === 'factual_summary' ? 'approved:factual_summary' : 'approved';
+    await db.batch([
+      db
+        .prepare(`INSERT INTO review_log (entity_type, entity_id, decision, actor_type, actor_id, policy_version, details) VALUES ('question', ?, ?, 'human', 'tester', 'test-1', ?)`)
+        .bind(q, decision, JSON.stringify({ mode, ...(mode === 'factual_summary' ? { factual } : {}) })),
+      db
+        .prepare(`UPDATE questions SET approval_mode = ?, approval_log_id = (SELECT MAX(id) FROM review_log WHERE entity_type = 'question' AND entity_id = ?) WHERE id = ?`)
+        .bind(mode, q, q),
+    ]);
+  }
   return q;
 }
 

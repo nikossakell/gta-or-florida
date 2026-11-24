@@ -16,7 +16,7 @@ import { formatIssues, importItemSchema, parse, type RunReport } from '@gof/core
 import { AI_DEFAULT_BUDGET, NEURON_RATES } from '@gof/config';
 import { createWikiClient } from './adapters/grandtheftwiki.ts';
 import { createBudget, createMockAiProvider, createWorkersAiProvider, type AiProvider } from './classify.ts';
-import { discoverGdelt, discoverRss, discoverWiki, type DiscoveryResult, type Log } from './discover.ts';
+import { discoverDoj, discoverFloridaManDataset, discoverGdelt, discoverRss, discoverWiki, type DiscoveryResult, type Log } from './discover.ts';
 import { createWorkerClient, type WorkerClient } from './import.ts';
 import { loadSourcesConfig } from './config-file.ts';
 import { processDiscovered } from './pipeline.ts';
@@ -47,6 +47,10 @@ export async function main(argv = process.argv.slice(2)) {
       source: { type: 'string', default: 'all' },
       'dry-run': { type: 'boolean', default: false },
       queries: { type: 'string', default: '3' },
+      'gdelt-min-rss-items': { type: 'string', default: '10' },
+      doj: { type: 'string', default: 'true' },
+      'doj-include-allegations': { type: 'boolean', default: false },
+      dataset: { type: 'boolean', default: false },
       'wiki-pages': { type: 'string', default: '1' },
       'max-link-checks': { type: 'string', default: '40' },
       'max-ai-requests': { type: 'string', default: String(AI_DEFAULT_BUDGET.maxRequestsPerRun) },
@@ -75,9 +79,28 @@ export async function main(argv = process.argv.slice(2)) {
   const want = (s: string) => values.source === 'all' || values.source === s;
   const results: DiscoveryResult[] = [];
   if (want('florida')) {
-    const cp = client ? await client.checkpoints('gdelt') : new Map<string, string>();
-    results.push(await discoverGdelt(cfg, { checkpoint: cp, queries: Number(values.queries), userAgent: USER_AGENT, log }));
-    results.push(await discoverRss(cfg, { userAgent: USER_AGENT, minIntervalMs: 2000, log }));
+    // DOJ (public domain) → allowed RSS → dataset (dev only) → GDELT only as a fallback (never during its cooldown).
+    let florida = 0;
+    if (values.doj !== 'false') {
+      const doj = await discoverDoj(cfg, { userAgent: USER_AGENT, lookbackDays: 2, maxPages: 6, includeAllegations: values['doj-include-allegations']!, log });
+      results.push(doj);
+      florida += doj.items.filter((i) => i.prefilter.decision === 'candidate').length;
+    }
+    const rssCp = client ? await client.checkpoints('rss') : new Map<string, string>();
+    const rss = await discoverRss(cfg, { userAgent: USER_AGENT, checkpoint: rssCp, log });
+    results.push(rss);
+    florida += rss.items.length;
+    if (values.dataset) {
+      if (/production/i.test(process.env.INGESTION_API_URL ?? '')) throw new Error('--dataset is staging/development only');
+      const dcp = client ? await client.checkpoints('floridaman_dataset') : new Map<string, string>();
+      const ds = await discoverFloridaManDataset(cfg, { userAgent: USER_AGENT, checkpoint: dcp, daysPerRun: 2, log });
+      results.push(ds);
+      florida += ds.items.filter((i) => i.prefilter.decision === 'candidate').length;
+    }
+    if (florida < Number(values['gdelt-min-rss-items'])) {
+      const cp = client ? await client.checkpoints('gdelt') : new Map<string, string>();
+      results.push(await discoverGdelt(cfg, { checkpoint: cp, queries: Number(values.queries), userAgent: USER_AGENT, log }));
+    }
   }
   if (want('gta')) {
     const cp = client ? await client.checkpoints('grandtheftwiki') : new Map<string, string>();
@@ -130,7 +153,8 @@ export async function main(argv = process.argv.slice(2)) {
   let schedule: unknown = null;
   if (client) {
     // Cursors advance only with the final chunk; a failed run is retried from the same place.
-    const checkpoints = status === 'failed' ? [] : results.flatMap((r) => r.checkpoints);
+    // Cooldown guards are saved even for a failed run, so a 429 is never followed by more requests.
+    const checkpoints = [...(status === 'failed' ? [] : results.flatMap((r) => r.checkpoints)), ...results.flatMap((r) => r.guards ?? [])];
     imported = await client.importItems(runId, valid, run, checkpoints);
     if (values.schedule) schedule = await client.schedule(30);
   }

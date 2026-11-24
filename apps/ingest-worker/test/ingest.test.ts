@@ -58,7 +58,7 @@ function fakeApi(o: { incidents?: Incident[]; checkpoints?: Record<string, Recor
 // ---------------------------------------------------------------- simulated outside world (wiki, GDELT, publishers)
 const missionText = (t: string) => `'''${t}''' is a mission in [[Grand Theft Auto III]] where the player chases an odd armored van across the harbor at night.`;
 
-function fakeWorld(o: { pages?: { id: number; title: string }[]; gdelt?: 'ok' | '429'; next?: string | null } = {}) {
+function fakeWorld(o: { pages?: { id: number; title: string }[]; gdelt?: 'ok' | '429'; next?: string | null; feeds?: Record<string, string> } = {}) {
   const pages = o.pages ?? [];
   const calls: string[] = [];
   const reply = (v: unknown, status = 200) => new Response(typeof v === 'string' ? v : JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
@@ -84,6 +84,8 @@ function fakeWorld(o: { pages?: { id: number; title: string }[]; gdelt?: 'ok' | 
         ],
       });
     }
+    if (o.feeds?.[u.toString()]) return new Response(o.feeds[u.toString()], { status: 200, headers: { 'content-type': 'application/rss+xml', etag: '"e1"' } });
+    if (u.pathname === '/robots.txt') return new Response('User-agent: *\nDisallow: /private/\n', { status: 200 });
     // Publisher link checks (HEAD): everything is up.
     return new Response(null, { status: 200 });
   }) as typeof fetch;
@@ -166,9 +168,9 @@ describe('ingestion workflow', () => {
         { provider: 'grandtheftwiki', key: 'nextCategory', value: '0' },
       ]),
     );
-    // Fuzzy dedupe paged through the title index in small pages.
-    expect(api.paths.some((p) => p.includes('/titles?kind=GTA_CANON&limit=25'))).toBe(true);
-    expect(s.names.filter((n) => n.startsWith('dedupe:scan:GTA_CANON')).length).toBe(3); // 61 incidents / 25 per page
+    // Fuzzy dedupe: the title index is read ONCE per 500 incidents (one API call), then scanned in CPU-bounded slices.
+    expect(api.paths.filter((p) => p.includes('/titles?kind=GTA_CANON')).map((p) => p.replace(/^GET \/titles/, ''))).toEqual(['?kind=GTA_CANON&limit=500']);
+    expect(s.names.filter((n) => n.startsWith('dedupe:scan:GTA_CANON')).length).toBe(2); // 61 incidents → slices of 50 entries
     expect(summary.outcomes).toEqual({ 'inserted:candidate': 8 });
     expect(events.map((e) => e.name)).toEqual(expect.arrayContaining(['ingest.discovered', 'ingest.planned', 'ingest.imported', 'ingest.inventory', 'ingest.run']));
     expect(summary.steps).toBe(s.names.length);
@@ -182,14 +184,18 @@ describe('ingestion workflow', () => {
     const api2 = fakeApi({ incidents: EXISTING });
     const out2 = await runIngestion({ ...RUN, params: {} }, replay.step, deps({ api: api2, world: fakeWorld({ pages: PAGES }) }));
     expect(replay.names).toEqual(first.names);
-    expect(out2).toEqual(out1);
+    // Identical except the per-invocation ACTUAL call counts (a replay served from cache makes none).
+    expect({ ...out2, subrequests: { ...out2.subrequests, actual: null } }).toEqual({ ...out1, subrequests: { ...out1.subrequests, actual: null } });
+    expect(out2.subrequests.reserved).toEqual(out1.subrequests.reserved);
+    expect(Object.values(out2.subrequests.actual).every((n) => n === 0)).toBe(true);
     expect(api2.imports).toEqual([]); // every step came from the cache: nothing re-sent
   });
 
   it('produces the same import items as the CLI pipeline (processDiscovered) on the same inputs', async () => {
     const s = fakeStep();
     const api = fakeApi({ incidents: EXISTING });
-    const d = deps({ api, world: fakeWorld({ pages: PAGES }) });
+    // Unconstrained subrequest budget: this test compares pipeline logic, not Free-plan rationing.
+    const d = deps({ api, world: fakeWorld({ pages: PAGES }), vars: { SUBREQUEST_BUDGET: '10000' } });
     await runIngestion({ ...RUN, params: {} }, s.step, d);
     const found: Discovered[] = [...s.names]
       .filter((n) => n === 'gdelt' || /^wiki:\d+:page:/.test(n))
@@ -243,7 +249,9 @@ describe('ingestion workflow', () => {
     const out = await runIngestion({ ...RUN, params: {} }, fakeStep().step, deps({ api, world: fakeWorld({ pages: PAGES, gdelt: '429' }) }));
     expect(out.status).toBe('partial');
     expect(out.errors.join()).toMatch(/gdelt.*429|rate/i);
-    expect(api.imports[0]!.body.checkpoints!.some((c) => c.provider === 'gdelt')).toBe(false);
+    const gdeltCps = api.imports[0]!.body.checkpoints!.filter((c) => c.provider === 'gdelt');
+    expect(gdeltCps.some((c) => c.key === 'nextBatchIndex')).toBe(false); // query cursor not advanced
+    expect(Object.fromEntries(gdeltCps.map((c) => [c.key, c.value]))).toEqual({ strikes: '1', cooldownUntil: '2026-11-23T11:17:00.000Z' }); // 6 h cooldown
     expect(api.imports[0]!.body.items.length).toBe(5); // wiki items still imported
   });
 
@@ -253,8 +261,12 @@ describe('ingestion workflow', () => {
     expect(world.calls.some((c) => c.includes('gdeltproject'))).toBe(false);
   });
 
-  it('refuses to start a run that would exceed the step budget', async () => {
-    await expect(runIngestion({ ...RUN, params: {} }, fakeStep().step, deps({ api: fakeApi({ incidents: EXISTING }), world: fakeWorld({ pages: PAGES }), vars: { MAX_STEPS: '50', SCAN_PAGE_SIZE: '1' } }))).rejects.toBeInstanceOf(StepBudgetError);
+  it('defers discovery instead of exceeding the step budget (the hard guard stays as a last resort)', async () => {
+    const s = fakeStep();
+    const out = await runIngestion({ ...RUN, params: {} }, s.step, deps({ api: fakeApi({ incidents: EXISTING }), world: fakeWorld({ pages: PAGES }), vars: { MAX_STEPS: '50', SCAN_PAGE_SIZE: '1', SCAN_CANDIDATES: '1' } }));
+    expect(s.names.length).toBeLessThanOrEqual(50);
+    expect(out.subrequests.deferred.length).toBeGreaterThan(0);
+    expect(out.status).not.toBe('failed');
   });
 
   it('flags an import that comes back approved (manual review gate must hold)', async () => {
@@ -263,13 +275,138 @@ describe('ingestion workflow', () => {
     expect(events.filter((e) => e.name === 'ingest.unexpected_approval').length).toBeGreaterThan(0);
   });
 
-  it('keeps every step within the Free-plan subrequest budget', async () => {
-    // Worst-case outbound calls in one step: process batch = 4 × (≤ 6 HTTP hops + 2 AI calls) = 32 < 50.
+});
+
+// ---------------------------------------------------------------- RSS-first Florida discovery
+describe('RSS-first Florida discovery', () => {
+  const FEEDS = [
+    { id: 'fa', sourceId: 'publisher:feed-a.example', url: 'https://feed-a.example/feed/', region: 'Tampa Bay' },
+    { id: 'fb', sourceId: 'publisher:feed-b.example', url: 'https://feed-b.example/feed/', region: 'Miami' },
+  ];
+  const policy = (host: string, ai: boolean) => ({
+    id: `publisher:${host}`,
+    type: 'publisher' as const,
+    name: host,
+    hosts: [host],
+    licenseStatus: 'unreviewed' as const,
+    canUseEditorialSummary: false,
+    canDisplayOriginalTitle: false,
+    autoPublishAllowed: false,
+    feedAccess: { status: 'allowed' as const, basis: [`https://${host}/rss/`], reviewedBy: 'owner', reviewedAt: '2026-11-23', aiClassification: ai },
+  });
+  const lookup = (id: string) => ({ 'publisher:feed-a.example': policy('feed-a.example', false), 'publisher:feed-b.example': policy('feed-b.example', true) })[id];
+  const feedXml = (host: string, titles: string[]) =>
+    `<rss><channel>${titles.map((t, i) => `<item><title>${t}</title><link>https://${host}/s/${i}</link><guid>${host}-${i}</guid><pubDate>Mon, 23 Nov 2026 10:00:00 GMT</pubDate></item>`).join('')}</channel></rss>`;
+  const feeds = {
+    'https://feed-a.example/feed/': feedXml('feed-a.example', ['Florida man rides a lawnmower to a Tampa drive-thru', 'Tampa iguana stuck in a vending machine overnight']),
+    'https://feed-b.example/feed/': feedXml('feed-b.example', ['Miami deputies find an alligator in a backyard pool', 'Florida man killed in crash on I-95 overnight']),
+  };
+  const rssCfg = { ...cfg, rss: FEEDS };
+  function countingAi() {
+    const calls: string[] = [];
+    const base = createMockAiProvider();
+    return { calls, ai: { name: 'mock', run: (model: string, messages: Parameters<typeof base.run>[1], max: number) => (calls.push(model), base.run(model, messages, max)) } };
+  }
+
+  it('uses allowed feeds, leaves GDELT alone when they yield enough, and runs AI only where the owner allowed it', async () => {
+    const api = fakeApi();
+    const world = fakeWorld({ feeds });
+    const counted = countingAi();
     const s = fakeStep();
-    await runIngestion({ ...RUN, params: {} }, s.step, deps({ api: fakeApi({ incidents: EXISTING }), world: fakeWorld({ pages: PAGES }) }));
-    expect(parseLimits({}).processBatch * (6 + 2)).toBeLessThan(50);
-    // AI steps barely retry (neurons); imports retry (idempotent keys).
-    expect(s.configs.get('process:0')!.retries!.limit).toBe(1);
-    expect(s.configs.get('import:0')!.retries!.limit).toBeGreaterThan(1);
+    const out = await runIngestion({ ...RUN, params: { sources: 'florida' } }, s.step, { ...deps({ api, world, vars: { GDELT_MIN_RSS_ITEMS: '3' } }), cfg: rssCfg, lookup, ai: counted.ai });
+    expect(out.gdelt).toBe('not_needed');
+    expect(world.calls.some((c) => c.includes('gdeltproject'))).toBe(false);
+    expect(s.names.filter((n) => n.startsWith('rss:'))).toEqual(['rss:fa', 'rss:fb']);
+    const items = api.imports[0]!.body.items;
+    expect(items.map((i) => [i.reference.provider, i.reference.canonicalUrl, i.prefilter.decision])).toEqual([
+      ['rss', 'https://feed-a.example/s/0', 'candidate'],
+      ['rss', 'https://feed-a.example/s/1', 'candidate'],
+      ['rss', 'https://feed-b.example/s/0', 'candidate'],
+      ['rss', 'https://feed-b.example/s/1', 'reject'],
+    ]);
+    // feed-a: metadata only (no AI); feed-b: AI allowed, but only for the prefilter-passing item.
+    expect(items.map((i) => i.ai !== null)).toEqual([false, false, true, false]);
+    expect(counted.calls.length).toBeGreaterThan(0);
+    expect(items.every((i) => !('fixture' in i))).toBe(true);
+    expect(api.imports[0]!.body.checkpoints).toEqual(
+      expect.arrayContaining([{ provider: 'rss', key: 'cache:fa', value: JSON.stringify({ etag: '"e1"', lastModified: null }) }]),
+    );
+  });
+
+  it('never contacts GDELT during its cooldown', async () => {
+    const world = fakeWorld({ feeds: {} });
+    const api = fakeApi({ checkpoints: { gdelt: { strikes: '1', cooldownUntil: '2026-11-23T11:17:00.000Z' } } });
+    const s = fakeStep();
+    const out = await runIngestion({ ...RUN, params: { sources: 'florida' } }, s.step, { ...deps({ api, world }), cfg: rssCfg, lookup: () => undefined });
+    expect(out.gdelt).toBe('cooldown');
+    expect(s.names).not.toContain('gdelt');
+    expect(world.calls.some((c) => c.includes('gdeltproject'))).toBe(false);
+  });
+
+  it('persists the GDELT cooldown even on a dry run and on a failed run (cursors stay put)', async () => {
+    const dry = fakeApi();
+    await runIngestion({ ...RUN, params: { sources: 'florida', dryRun: true } }, fakeStep().step, { ...deps({ api: dry, world: fakeWorld({ gdelt: '429' }) }), cfg: rssCfg, lookup: () => undefined });
+    expect(dry.imports).toHaveLength(1);
+    expect(dry.imports[0]!.body).toEqual({ items: [], checkpoints: [{ provider: 'gdelt', key: 'strikes', value: '1' }, { provider: 'gdelt', key: 'cooldownUntil', value: '2026-11-23T11:17:00.000Z' }] });
+
+    const failed = fakeApi();
+    const out = await runIngestion({ ...RUN, params: { sources: 'florida' } }, fakeStep().step, { ...deps({ api: failed, world: fakeWorld({ gdelt: '429' }) }), cfg: rssCfg, lookup: () => undefined });
+    expect(out.status).toBe('failed');
+    expect(failed.imports[0]!.body.checkpoints).toEqual([{ provider: 'gdelt', key: 'strikes', value: '1' }, { provider: 'gdelt', key: 'cooldownUntil', value: '2026-11-23T11:17:00.000Z' }]);
   });
 });
+
+// ---------------------------------------------------------------- DOJ + staging-only dataset
+describe('Florida: DOJ first, dataset staging-only', () => {
+  const ts = (d: string) => String(Date.parse(`${d}T12:00:00Z`) / 1000);
+  const dojBody = JSON.stringify({
+    results: [
+      { uuid: 'u1', title: 'Bradenton Man Pleads Guilty To Home Improvement Refund Scheme', teaser: 'Tampa, Florida – Synthetic.', url: 'https://www.justice.gov/usao-mdfl/pr/u1', date: ts('2026-11-23') },
+      { uuid: 'u2', title: 'Lakeland Woman Sentenced For Fake Parking Ticket Scheme', teaser: 'Tampa, Florida – Synthetic.', url: 'https://www.justice.gov/usao-mdfl/pr/u2', date: ts('2026-11-22') },
+      { uuid: 'old', title: 'Outside the lookback window by a long way', teaser: '', url: 'https://www.justice.gov/usao-mdfl/pr/old', date: ts('2026-11-01') },
+    ],
+  });
+  const dayBody = JSON.stringify([{ title: 'Florida man tries to pay for tacos with a live baby alligator', url: 'https://www.wfla.com/news/florida/alligator-tacos/', source: 'wfla.com', date: '2022-01-01' }]);
+  function world() {
+    const calls: string[] = [];
+    const fetchImpl = (async (input: string | URL) => {
+      const u = new URL(String(input));
+      calls.push(`${u.hostname}${u.pathname}`);
+      if (u.hostname === 'www.justice.gov') return new Response(dojBody, { status: 200, headers: { 'content-type': 'application/json' } });
+      if (u.hostname === 'juliayxhuang.github.io') return new Response(u.pathname.endsWith('/01/01.json') ? dayBody : '[]', { status: 200, headers: { 'content-type': 'application/json' } });
+      if (u.hostname === 'api.gdeltproject.org') return new Response('', { status: 429 });
+      return new Response(null, { status: 200 });
+    }) as typeof fetch;
+    return { calls, fetchImpl };
+  }
+  const vars = { DOJ_ENABLED: 'true', FM_DATASET_ENABLED: 'true', GDELT_MIN_RSS_ITEMS: '2', DOJ_MIN_UNUSUAL: '0' };
+
+  it('imports DOJ convictions and dataset items as review candidates in staging, without touching GDELT', async () => {
+    const api = fakeApi();
+    const w = world();
+    const s = fakeStep();
+    const out = await runIngestion({ ...RUN, params: { sources: 'florida' } }, s.step, { ...deps({ api, world: w as never, vars }), appEnv: 'staging' });
+    expect(s.names.slice(0, 3)).toEqual(['checkpoints', 'doj:p0', 'floridaman_dataset:0']);
+    expect(out.gdelt).toBe('not_needed');
+    expect(w.calls.some((c) => c.includes('gdeltproject'))).toBe(false);
+    const items = api.imports[0]!.body.items;
+    expect(items.map((i) => [i.reference.provider, i.reference.canonicalUrl])).toEqual([
+      ['doj', 'https://justice.gov/usao-mdfl/pr/u1'],
+      ['doj', 'https://justice.gov/usao-mdfl/pr/u2'],
+      ['floridaman_dataset', 'https://wfla.com/news/florida/alligator-tacos'],
+    ]);
+    expect(items[2]!.ai).toBeNull(); // third-party headline: no AI
+    expect(api.imports[0]!.body.checkpoints).toEqual(expect.arrayContaining([{ provider: 'floridaman_dataset', key: 'nextDay', value: '2' }]));
+  });
+
+  it('never runs the dataset in production, whatever the flag says', async () => {
+    const api = fakeApi();
+    const w = world();
+    const s = fakeStep();
+    await runIngestion({ ...RUN, params: { sources: 'florida', dryRun: true } }, s.step, { ...deps({ api, world: w as never, vars }), appEnv: 'production' });
+    expect(s.names).not.toContain('floridaman_dataset');
+    expect(w.calls.some((c) => c.includes('juliayxhuang'))).toBe(false);
+    expect(api.paths.some((p) => p.includes('provider=floridaman_dataset'))).toBe(false);
+  });
+});
+

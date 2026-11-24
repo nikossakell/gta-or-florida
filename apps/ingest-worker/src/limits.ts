@@ -28,6 +28,29 @@ export type IngestLimits = {
   /** Hard stop before a run could exceed this many steps (Free: 1,024 per instance). */
   maxSteps: number;
   lowInventoryDays: number;
+  /** DOJ press releases from Florida's three U.S. Attorney's Offices (public domain). */
+  dojEnabled: boolean;
+  dojLookbackDays: number;
+  dojMaxPages: number;
+  /** false (default): charges/arrests are recorded as rejected (ALLEGATION_ONLY); only convictions/pleas/sentences flow. */
+  dojIncludeAllegations: boolean;
+  /** Florida Man API dataset (staging/dev only; refused in production regardless of this flag). */
+  datasetEnabled: boolean;
+  datasetDaysPerRun: number;
+  /** DOJ releases below this unusualness score are recorded as NOT_UNUSUAL (0 = off). */
+  dojMinUnusual: number;
+  /** Historical DOJ backfill: pages per run (≤ 10 per step, 1 s apart) until `dojBackfillDays` are covered. */
+  dojBackfillEnabled: boolean;
+  dojBackfillDays: number;
+  dojBackfillPagesPerRun: number;
+  /** Start a successor backfill instance when one finishes with pages left. */
+  dojBackfillChain: boolean;
+  /** One backfill instance at a time: lease length. */
+  dojBackfillLeaseMinutes: number;
+  /** Planned subrequests per Workflow INSTANCE (Workers Free: 50 per invocation; keep headroom). */
+  subrequestBudget: number;
+  /** Title-index pages (500 incidents each) reserved per content kind for fuzzy dedupe. */
+  titlePagesPerKind: number;
 };
 
 export type LimitVars = Partial<Record<
@@ -43,7 +66,21 @@ export type LimitVars = Partial<Record<
   | 'MAX_AI_REQUESTS'
   | 'MAX_NEURONS'
   | 'MAX_STEPS'
-  | 'LOW_INVENTORY_DAYS',
+  | 'LOW_INVENTORY_DAYS'
+  | 'DOJ_ENABLED'
+  | 'DOJ_LOOKBACK_DAYS'
+  | 'DOJ_MAX_PAGES'
+  | 'DOJ_INCLUDE_ALLEGATIONS'
+  | 'FM_DATASET_ENABLED'
+  | 'FM_DATASET_DAYS_PER_RUN'
+  | 'DOJ_MIN_UNUSUAL'
+  | 'DOJ_BACKFILL_ENABLED'
+  | 'DOJ_BACKFILL_DAYS'
+  | 'DOJ_BACKFILL_PAGES_PER_RUN'
+  | 'DOJ_BACKFILL_CHAIN'
+  | 'DOJ_BACKFILL_LEASE_MINUTES'
+  | 'SUBREQUEST_BUDGET'
+  | 'TITLE_PAGES_PER_KIND',
   string
 >>;
 
@@ -67,5 +104,22 @@ export function parseLimits(v: LimitVars): IngestLimits {
     maxNeurons: int(v.MAX_NEURONS, AI_DEFAULT_BUDGET.maxNeuronsPerRun, 0, 10_000),
     maxSteps: int(v.MAX_STEPS, 900, 50, 25_000),
     lowInventoryDays: int(v.LOW_INVENTORY_DAYS, LOW_INVENTORY_DAYS, 1, 365),
+    dojEnabled: v.DOJ_ENABLED === 'true',
+    dojLookbackDays: int(v.DOJ_LOOKBACK_DAYS, 2, 1, 14),
+    // ~62 releases/day department-wide, 50 per page (measured 2026-11-23): 2 days ≈ 3 pages.
+    dojMaxPages: int(v.DOJ_MAX_PAGES, 6, 1, 20),
+    dojIncludeAllegations: v.DOJ_INCLUDE_ALLEGATIONS === 'true',
+    datasetEnabled: v.FM_DATASET_ENABLED === 'true',
+    datasetDaysPerRun: int(v.FM_DATASET_DAYS_PER_RUN, 2, 1, 10),
+    dojMinUnusual: int(v.DOJ_MIN_UNUSUAL, 2, 0, 20),
+    dojBackfillEnabled: v.DOJ_BACKFILL_ENABLED === 'true',
+    dojBackfillDays: int(v.DOJ_BACKFILL_DAYS, 365, 7, 3650),
+    // Per backfill INSTANCE (one page per step). Also capped by the subrequest plan (≈30 fit in 45).
+    dojBackfillPagesPerRun: int(v.DOJ_BACKFILL_PAGES_PER_RUN, 25, 0, 200),
+    dojBackfillChain: v.DOJ_BACKFILL_CHAIN !== 'false',
+    dojBackfillLeaseMinutes: int(v.DOJ_BACKFILL_LEASE_MINUTES, 60, 5, 720),
+    // Workers Free: 50 subrequests per invocation incl. Service Binding calls; 5 kept as headroom.
+    subrequestBudget: int(v.SUBREQUEST_BUDGET, 45, 12, 10_000),
+    titlePagesPerKind: int(v.TITLE_PAGES_PER_KIND, 2, 1, 100),
   };
 }

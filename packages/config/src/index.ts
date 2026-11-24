@@ -3,6 +3,7 @@
  * Bundled into the Worker and the ingestion job; no I/O, no secrets.
  */
 import {
+  FEED_ACCESS_STATUSES,
   hostMatches,
   LICENSE_STATUSES,
   parse,
@@ -29,6 +30,16 @@ const policySchema = s.object({
   reviewedBy: s.optional(s.string({ min: 1, max: 80 })),
   reviewedAt: s.optional(s.string({ max: 10, pattern: /^\d{4}-\d{2}-\d{2}$/ })),
   notes: s.optional(s.string({ max: 1000 })),
+  feedAccess: s.optional(
+    s.object({
+      status: s.enum(FEED_ACCESS_STATUSES),
+      basis: s.optional(s.array(s.string({ max: 300, pattern: /^https:\/\// }), { max: 10 })),
+      aiClassification: s.optional(s.boolean()),
+      reviewedBy: s.optional(s.string({ min: 1, max: 80 })),
+      reviewedAt: s.optional(s.string({ max: 10, pattern: /^\d{4}-\d{2}-\d{2}$/ })),
+      findings: s.optional(s.string({ max: 2000 })),
+    }),
+  ),
 });
 
 const registrySchema = s.object({
@@ -53,6 +64,11 @@ export function loadRegistry(raw: unknown): SourceRegistry {
     if (src.licenseStatus === 'approved' && (!src.reviewedBy || !src.reviewedAt)) problems.push(`${src.id}: approved sources need reviewedBy + reviewedAt`);
     if (src.autoPublishAllowed && !src.canUseEditorialSummary) problems.push(`${src.id}: autoPublishAllowed requires canUseEditorialSummary`);
     if (src.type === 'player_platform' && src.autoPublishAllowed) problems.push(`${src.id}: player platforms can never be auto-published`);
+    const fa = src.feedAccess;
+    if (fa && fa.status !== 'unreviewed' && (!fa.reviewedBy || !fa.reviewedAt)) problems.push(`${src.id}: feedAccess ${fa.status} needs reviewedBy + reviewedAt`);
+    if (fa?.status === 'allowed' && !fa.basis?.length) problems.push(`${src.id}: feedAccess allowed needs a documented basis (official URL)`);
+    if (fa?.status === 'allowed' && src.licenseStatus === 'blocked') problems.push(`${src.id}: a blocked source cannot have feed access`);
+    if (fa?.aiClassification && fa.status !== 'allowed') problems.push(`${src.id}: aiClassification requires feedAccess allowed`);
   }
   if (problems.length) throw new Error(`sources.policy.json: ${problems.join('; ')}`);
   return r.value as SourceRegistry;

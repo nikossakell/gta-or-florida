@@ -134,6 +134,47 @@ describe('daily round', () => {
   });
 });
 
+describe('approval modes (same rules as the scheduler)', () => {
+  const WIKI = { id: 'grandtheftwiki', type: 'gta_wiki' as const, name: 'Grand Theft Wiki', hosts: ['grandtheftwiki.com'], licenseStatus: 'unreviewed' as const, canUseEditorialSummary: false, canDisplayOriginalTitle: false, autoPublishAllowed: false };
+  async function factualRound() {
+    await seedSource(h.db, APPROVED_PUBLISHER);
+    await seedSource(h.db, WIKI);
+    for (let i = 0; i < 3; i++) await seedApproved(h.db, 'FLORIDA');
+    const gta = [];
+    for (let i = 0; i < 2; i++) gta.push(await seedApproved(h.db, 'GTA', { sourceId: WIKI.id, provider: 'grandtheftwiki', mode: 'factual_summary' }));
+    const r = await scheduleRounds(h.db, { startDate: TODAY, days: 1, appEnv: 'production' });
+    expect(r.added).toEqual([{ date: TODAY, floridaCount: 3 }]);
+    return gta;
+  }
+
+  it('serves a 3 + 2 round whose GTA questions are factual summaries of the unreviewed wiki', async () => {
+    await factualRound();
+    const res = await get('/api/challenge/today');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ChallengeResponse;
+    expect(body.questions).toHaveLength(5);
+    expect(body.sample).toBe(false);
+  });
+
+  const mutations: [string, (q: string) => Promise<unknown>][] = [
+    ['approval revoked afterwards (audit)', (q) => h.db.prepare(`INSERT INTO review_log (entity_type, entity_id, decision, actor_type, actor_id) VALUES ('question', ?, 'approval_revoked', 'human', 'owner')`).bind(q).run()],
+    ['approval provenance cleared', (q) => h.db.prepare('UPDATE questions SET approval_log_id = NULL WHERE id = ?').bind(q).run()],
+    ['mode switched to licensed without source rights', (q) => h.db.prepare(`UPDATE questions SET approval_mode = 'licensed' WHERE id = ?`).bind(q).run()],
+    ['source blocked', () => h.db.prepare(`UPDATE sources SET license_status = 'blocked' WHERE id = 'grandtheftwiki'`).run()],
+    ['stored attestation incomplete', (q) => h.db.prepare(`UPDATE review_log SET details = '{"mode":"factual_summary","factual":{"humanWritten":true}}' WHERE id = (SELECT approval_log_id FROM questions WHERE id = ?)`).bind(q).run()],
+    ['dataset provider in production', (q) => h.db.prepare('UPDATE source_references SET provider = ? WHERE id = (SELECT primary_reference_id FROM questions WHERE id = ?)').bind('floridaman_dataset', q).run()],
+    ['question back in review', (q) => h.db.prepare(`UPDATE questions SET quality_state = 'candidate' WHERE id = ?`).bind(q).run()],
+  ];
+  for (const [name, mutate] of mutations) {
+    it(`stops serving the round when a factual question is no longer eligible: ${name}`, async () => {
+      const [q] = await factualRound();
+      expect((await get('/api/challenge/today')).status).toBe(200);
+      await mutate(q!);
+      expect((await get('/api/challenge/today')).status).toBe(503);
+    });
+  }
+});
+
 describe('CORS', () => {
   it('allows the production origin and parsed Pages previews only', async () => {
     const pre = (origin: string) => h.fetch('/api/challenge/today', { method: 'OPTIONS', headers: { origin }, now });

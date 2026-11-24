@@ -8,6 +8,28 @@ import { CONTENT_KINDS, GTA_GAMES, LINK_STATUSES, type GtaGame } from './content
 import { s, type Infer } from './schema.ts';
 
 export const MAX_IMPORT_ITEMS = 20;
+
+/**
+ * Admin/service bearer tokens: 32–512 visible ASCII characters (0x21–0x7E), nothing else.
+ * This is exactly what the API Worker's `Authorization: Bearer …` parser accepts, so a client
+ * can reject a token it could never authenticate with, before sending it anywhere.
+ */
+export const BEARER_TOKEN_MIN = 32;
+export const BEARER_TOKEN_MAX = 512;
+
+/** Why a configured token can't be sent as a bearer token (categories only — never the value). Empty = valid. */
+export function bearerTokenProblems(token: unknown): string[] {
+  if (token === undefined || token === null || token === '') return ['missing'];
+  if (typeof token !== 'string') return ['not a string'];
+  const out: string[] = [];
+  if (token.length < BEARER_TOKEN_MIN) out.push(`shorter than ${BEARER_TOKEN_MIN} characters`);
+  if (token.length > BEARER_TOKEN_MAX) out.push(`longer than ${BEARER_TOKEN_MAX} characters`);
+  if (/[ \t\r\n]/.test(token)) out.push('contains spaces, tabs or line breaks');
+  if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(token)) out.push('contains control characters (e.g. pasted terminal escape codes)');
+  if (/[^\x00-\x7f]/.test(token)) out.push('contains non-ASCII characters');
+  if (/^bearer[ \t]/i.test(token)) out.push('includes the "Bearer " prefix');
+  return out;
+}
 export const MAX_IMPORT_BYTES = 256 * 1024;
 export const MAX_ADMIN_BODY_BYTES = 64 * 1024;
 
@@ -131,9 +153,32 @@ export type KnownResponse = { canonicalUrls: string[]; providerKeys: string[] };
 /** Titles for client-side similarity (paged; the Worker does no fuzzy matching itself). */
 export type TitleIndexResponse = { items: { incidentKey: string; title: string; kind: string; seenAt: string | null }[]; nextCursor: string | null };
 
+export const APPROVAL_MODES = ['licensed', 'factual_summary'] as const;
+export type ApprovalMode = (typeof APPROVAL_MODES)[number];
+
+/** What the human reviewer verified for an Independent Factual Summary (all required, all explicit). */
+export const factualAttestationSchema = s.object({
+  /** The play title and explanation were written by the reviewer, not copied or adapted from the source. */
+  humanWritten: s.boolean(),
+  /** The incident itself happened as described (checked against the evidence, not just the headline). */
+  incidentVerified: s.boolean(),
+  /** Every factual claim in the explanation is supported by the evidence. */
+  claimsVerified: s.boolean(),
+  /** No private individual is named; charges are worded as allegations; no minors or victims identifiable. */
+  privacyChecked: s.boolean(),
+  verifiedDate: s.string({ max: 10, pattern: /^\d{4}-\d{2}-\d{2}$/ }),
+  /** Florida news: the Florida place (e.g. "Pace, Florida"). GTA: the in-game place or game. */
+  verifiedLocation: s.string({ min: 2, max: 120 }),
+  /** Where the facts were checked (https). At least one must be the candidate's own source. */
+  evidenceUrls: s.array(httpsUrl, { min: 1, max: 5 }),
+  notes: s.optional(text(500)),
+});
+export type FactualAttestation = Infer<typeof factualAttestationSchema>;
+
 export const reviewSchema = s.object({
   questionId: id(80),
-  action: s.enum(['approve', 'reject', 'edit'] as const),
+  /** revoke: return an approved, never-scheduled question to review (admin only; needs a reason; a fresh approval follows). */
+  action: s.enum(['approve', 'reject', 'edit', 'revoke'] as const),
   playTitle: s.optional(s.string({ max: 240 })),
   explanation: s.optional(s.string({ max: 800 })),
   category: s.optional(s.enum(CATEGORIES)),
@@ -147,6 +192,13 @@ export const reviewSchema = s.object({
   linkCheck: s.optional(linkCheckSchema),
   linkVerifiedManually: s.optional(s.boolean()),
   reason: s.optional(s.string({ max: 500 })),
+  /**
+   * "licensed" (default): the source's reuse rights allow an editorial summary (unchanged path).
+   * "factual_summary": Independent Factual Summary — the reviewer publishes independently verified
+   * facts in their OWN words with a link, without reusing the publisher's wording. Requires `factual`.
+   */
+  mode: s.optional(s.enum(APPROVAL_MODES)),
+  factual: s.optional(factualAttestationSchema),
 });
 export type ReviewRequest = Infer<typeof reviewSchema>;
 

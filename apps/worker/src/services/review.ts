@@ -9,11 +9,14 @@ import {
   DEFAULT_WITHDRAWN_MESSAGE,
   explanationProblems,
   hostMatches,
+  nearCopyProblems,
+  placeholderProblems,
   playTitleProblems,
   sourceProblems,
   titleFingerprint,
   utcDate,
   type ContentKind,
+  type FactualAttestation,
   type ReviewRequest,
   type WithdrawRequest,
 } from '@gof/core';
@@ -21,6 +24,7 @@ import { DEFAULT_THRESHOLDS, POLICY_VERSION, sourceById } from '@gof/config';
 import type { Principal } from '../security/auth.ts';
 import { HttpError } from '../http.ts';
 import { isConstraintError, logStmt, placeholders } from '../db/repo.ts';
+import { sourceAccessProblems } from './eligibility.ts';
 
 export type CandidateRow = {
   question_id: string;
@@ -124,7 +128,50 @@ function sourceHosts(row: Pick<CandidateRow, 'source_id' | 'source_host'>): stri
   return sourceById(row.source_id)?.hosts ?? (row.source_host ? [row.source_host] : []);
 }
 
-export async function review(db: D1Database, req: ReviewRequest, who: Principal, now: Date): Promise<ReviewResult> {
+/**
+ * Independent Factual Summary: who may publish verified facts in their own words, from where.
+ * Replaces ONLY the reuse-rights check of the licensed path; every other check still applies.
+ */
+export function factualSummaryProblems(
+  row: Pick<CandidateRow, 'kind' | 'provider' | 'source_id' | 'source_host' | 'license_status' | 'original_title' | 'original_url'>,
+  req: Pick<ReviewRequest, 'playTitle' | 'explanation'> & { factual?: FactualAttestation },
+  ctx: { appEnv?: string; now: Date },
+): string[] {
+  const out: string[] = [];
+  const f = req.factual;
+  // Access and collection restrictions are never bypassed by this mode (same rules as scheduling/serving).
+  out.push(...sourceAccessProblems(row, ctx.appEnv));
+  if (!f) {
+    out.push('FACTUAL_ATTESTATION_MISSING: factual_summary mode needs the reviewer\'s verification (factual)');
+    return out;
+  }
+  // Original wording: the reviewer writes both texts in this request (no stored or AI drafts).
+  if (req.playTitle === undefined) out.push('FACTUAL_TITLE_MISSING: write the play title yourself in this request');
+  if (req.explanation === undefined) out.push('FACTUAL_EXPLANATION_MISSING: write the explanation yourself in this request');
+  if (!f.humanWritten) out.push('FACTUAL_NOT_HUMAN_WRITTEN: title and explanation must be written by the reviewer');
+  if (!f.incidentVerified) out.push('FACTUAL_INCIDENT_UNVERIFIED: verify the incident itself, not just the headline');
+  if (!f.claimsVerified) out.push('FACTUAL_CLAIMS_UNVERIFIED: every claim in the explanation must be supported by the evidence');
+  if (!f.privacyChecked) out.push('FACTUAL_PRIVACY_UNCHECKED: confirm no private individual is named and allegations are worded as allegations');
+  const day = Date.parse(`${f.verifiedDate}T00:00:00Z`);
+  if (Number.isNaN(day) || day > ctx.now.getTime()) out.push('FACTUAL_DATE_INVALID: verifiedDate must be a real date, not in the future');
+  if (row.kind === 'FLORIDA_NEWS' && !/\b(florida|fla\.?|fl)\b/i.test(f.verifiedLocation)) out.push('FACTUAL_LOCATION_NOT_FLORIDA: verifiedLocation must name the Florida place (e.g. "Pace, Florida")');
+  // Provenance: the facts must have been checked at the candidate's own source (plus any corroboration).
+  const hosts = sourceHosts(row);
+  const onSource = f.evidenceUrls.some((u) => {
+    try {
+      return u === row.original_url || hostMatches(new URL(u).hostname, hosts);
+    } catch {
+      return false;
+    }
+  });
+  if (!onSource) out.push(`FACTUAL_PROVENANCE: at least one evidence URL must be the candidate's source (${row.source_id})`);
+  // Safeguards against near-copying the source headline (not proof of originality).
+  if (req.playTitle) out.push(...nearCopyProblems(req.playTitle, row.original_title, 'PLAY_TITLE'));
+  if (req.explanation) out.push(...nearCopyProblems(req.explanation, row.original_title, 'EXPLANATION'));
+  return out;
+}
+
+export async function review(db: D1Database, req: ReviewRequest, who: Principal, now: Date, appEnv?: string): Promise<ReviewResult> {
   const row = await getCandidate(db, req.questionId);
   if (!row || row.question_id !== req.questionId) return { ok: false, errors: [`No question with id ${req.questionId}`] };
   const actor = { actorType: 'human' as const, actorId: who.actorId, policyVersion: POLICY_VERSION };
@@ -141,6 +188,8 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
     ]);
     return { ok: true, questionId: row.question_id, state: 'rejected' };
   }
+
+  if (req.action === 'revoke') return revokeApproval(db, row, req, actor, stamp);
 
   const playTitle = req.playTitle !== undefined ? cleanText(req.playTitle, 240) : row.play_title;
   const explanation = req.explanation !== undefined ? cleanText(req.explanation, 800) : row.explanation;
@@ -163,25 +212,36 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
   if (row.kind === 'GTA_PLAYER_EVENT') err('GTA_PLAYER_EVENT is disabled');
   if (row.possible_duplicate_of && !req.notDuplicate) err(`Flagged as possible duplicate of ${row.possible_duplicate_of}; merge it or pass notDuplicate after checking`);
 
-  for (const p of sourceProblems({
-    licenseStatus: row.license_status as never,
-    canUseEditorialSummary: row.can_use_editorial_summary === 1,
-    reviewedBy: row.source_reviewed_by ?? undefined,
-    reviewedAt: row.source_reviewed_at ?? undefined,
-  })) {
-    err(`${p} (${row.source_id}). Rights are decided per source in packages/config/sources.policy.json, then deployed + synced.`);
+  const mode = req.mode ?? 'licensed';
+  if (mode === 'factual_summary') {
+    // Facts in the reviewer's own words + a link: no reuse of the publisher's wording, so the reuse-rights
+    // check is replaced by access, provenance, verification and near-copy checks.
+    for (const p of factualSummaryProblems(row, req, { appEnv, now })) err(p);
+  } else {
+    for (const p of sourceProblems({
+      licenseStatus: row.license_status as never,
+      canUseEditorialSummary: row.can_use_editorial_summary === 1,
+      reviewedBy: row.source_reviewed_by ?? undefined,
+      reviewedAt: row.source_reviewed_at ?? undefined,
+    })) {
+      err(`${p} (${row.source_id}). Rights are decided per source in packages/config/sources.policy.json, then deployed + synced. For your own wording of verified facts, use mode factual_summary.`);
+    }
   }
   if (req.playTitle === undefined && !row.play_title_reviewed) err('playTitle is required: write (or confirm) the neutral title yourself');
   const exactTitleAllowed = row.license_status === 'approved' && row.can_display_original_title === 1;
   for (const p of playTitleProblems(playTitle, { originalTitle: row.original_title, exactTitleAllowed })) err(p);
   if (req.explanation === undefined && !row.explanation) err('explanation is required');
   for (const p of explanationProblems(explanation)) err(p);
+  // Template/placeholder text passes the length rules, so it is refused explicitly (every mode).
+  for (const p of placeholderProblems(playTitle, 'PLAY_TITLE')) err(p);
+  for (const p of placeholderProblems(explanation, 'EXPLANATION')) err(p);
 
-  const publishedAt = req.publishedAt ?? row.published_at;
+  // For news the verified date is the incident's publication date; for GTA it is only when the reviewer checked (never shown as a date).
+  const publishedAt = req.publishedAt ?? (mode === 'factual_summary' && row.kind === 'FLORIDA_NEWS' ? req.factual?.verifiedDate : undefined) ?? row.published_at;
   const publisher = req.publisher ?? row.publisher;
   const game = req.game ?? null;
   if (row.kind === 'FLORIDA_NEWS') {
-    if (!(req.locationVerified ?? row.location_verified === 1)) err('locationVerified: confirm the event happened in Florida');
+    if (!(req.locationVerified ?? row.location_verified === 1) && !(mode === 'factual_summary' && req.factual)) err('locationVerified: confirm the event happened in Florida');
     if (!publishedAt) err('publishedAt (YYYY-MM-DD) is required for Florida news');
     if (!publisher) err('publisher is required for Florida news');
   }
@@ -221,6 +281,7 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
   }
   if (errors.length) return { ok: false, errors };
 
+  const decision = mode === 'factual_summary' ? 'approved:factual_summary' : 'approved';
   try {
     await db.batch([
       db
@@ -229,20 +290,91 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
       db
         .prepare(`UPDATE incidents SET verification_status = 'verified', location_verified = ?, game = ?, category = ?, updated_at = ? WHERE id = ?`)
         .bind(row.kind === 'FLORIDA_NEWS' ? 1 : 0, row.kind === 'GTA_CANON' ? game : null, req.category ?? row.category, stamp, row.incident_id),
+      logStmt(db, {
+        ...actor,
+        entityType: 'question',
+        entityId: row.question_id,
+        decision,
+        // Provenance for factual summaries: what was verified, where, by whom (actor), under which policy.
+        details: { linkStatus, game, gateDecision: row.gate_decision, mode, ...(mode === 'factual_summary' ? { factual: req.factual, sourceLicense: row.license_status } : {}) },
+      }),
+      // The approval in force = the audit row just written (scheduling and serving check it).
       db
         .prepare(
           `UPDATE questions SET play_title = ?, play_title_reviewed = 1, play_title_fingerprint = ?, explanation = ?, difficulty = ?,
-             quality_state = 'approved', approved_by = ?, approved_at = ?, approval_actor_type = 'human', updated_at = ?
+             quality_state = 'approved', approved_by = ?, approved_at = ?, approval_actor_type = 'human', updated_at = ?,
+             approval_mode = ?,
+             approval_log_id = (SELECT MAX(id) FROM review_log WHERE entity_type = 'question' AND entity_id = ? AND decision = ?)
            WHERE id = ? AND quality_state = 'candidate'`,
         )
-        .bind(playTitle, titleFingerprint(playTitle), explanation, req.difficulty ?? row.difficulty, who.actorId, stamp, stamp, row.question_id),
-      logStmt(db, { ...actor, entityType: 'question', entityId: row.question_id, decision: 'approved', details: { linkStatus, game, gateDecision: row.gate_decision } }),
+        .bind(playTitle, titleFingerprint(playTitle), explanation, req.difficulty ?? row.difficulty, who.actorId, stamp, stamp, mode, row.question_id, decision, row.question_id),
     ]);
   } catch (error) {
     if (isConstraintError(error)) return { ok: false, errors: ['PLAY_TITLE_DUPLICATE: an approved question already uses this wording'] };
     throw error;
   }
   return { ok: true, questionId: row.question_id, state: 'approved' };
+}
+
+/**
+ * Revoke a human approval that should not stand (e.g. placeholder text), before it was ever scheduled.
+ * The question goes back to `candidate` with its reviewed title flag and explanation cleared, so the
+ * next approval must supply new text and pass every check again (factual-summary attestations are
+ * per request and never stored, so they are always fresh). Source reference, provenance and earlier
+ * review_log rows are untouched; the revoked text and approver are kept in the new log entry.
+ * Scheduled questions are refused: published content goes through `withdraw` instead.
+ */
+async function revokeApproval(
+  db: D1Database,
+  row: CandidateRow,
+  req: ReviewRequest,
+  actor: { actorType: 'human'; actorId: string; policyVersion: string },
+  stamp: string,
+): Promise<ReviewResult> {
+  const reason = cleanText(req.reason, 500);
+  if (reason.length < 5) return { ok: false, errors: ['reason is required to revoke an approval (at least 5 characters)'] };
+  if (row.quality_state !== 'approved') return { ok: false, errors: [`Question is ${row.quality_state}; only approved questions can be revoked`] };
+  const scheduled = await db.prepare('SELECT day FROM daily_round_items WHERE question_id = ?').bind(row.question_id).first<{ day: string }>();
+  if (scheduled) return { ok: false, errors: [`Question is scheduled on ${scheduled.day}; withdraw it instead (it stays in the audit trail).`] };
+  const prior = await db
+    .prepare('SELECT approved_by, approved_at, approval_actor_type FROM questions WHERE id = ?')
+    .bind(row.question_id)
+    .first<{ approved_by: string | null; approved_at: string | null; approval_actor_type: string | null }>();
+
+  // Every statement re-checks "still approved and unscheduled", so a concurrent scheduler run or a
+  // second revoke cannot leave a half-applied change; D1 runs the batch as one transaction.
+  const stillRevocable = `EXISTS (SELECT 1 FROM questions WHERE id = ?1 AND quality_state = 'approved')
+       AND NOT EXISTS (SELECT 1 FROM daily_round_items WHERE question_id = ?1)`;
+  const details = {
+    revoked: {
+      playTitle: row.play_title,
+      explanation: row.explanation,
+      difficulty: row.difficulty,
+      approvedBy: prior?.approved_by ?? null,
+      approvedAt: prior?.approved_at ?? null,
+      approvalActorType: prior?.approval_actor_type ?? null,
+    },
+  };
+  const results = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO review_log (entity_type, entity_id, decision, reason, actor_type, actor_id, policy_version, details)
+         SELECT 'question', ?1, 'approval_revoked', ?2, ?3, ?4, ?5, ?6 WHERE ${stillRevocable}`,
+      )
+      .bind(row.question_id, reason, actor.actorType, actor.actorId, actor.policyVersion, JSON.stringify(details)),
+    db
+      .prepare(`UPDATE incidents SET verification_status = 'unverified', updated_at = ?3 WHERE id = ?2 AND ${stillRevocable}`)
+      .bind(row.question_id, row.incident_id, stamp),
+    db
+      .prepare(
+        `UPDATE questions SET quality_state = 'candidate', play_title_reviewed = 0, explanation = '',
+           approved_by = NULL, approved_at = NULL, approval_actor_type = NULL, approval_mode = NULL, approval_log_id = NULL, updated_at = ?2
+         WHERE id = ?1 AND quality_state = 'approved' AND NOT EXISTS (SELECT 1 FROM daily_round_items WHERE question_id = ?1)`,
+      )
+      .bind(row.question_id, stamp),
+  ]);
+  if (!results[2]?.meta.changes) return { ok: false, errors: ['Question changed while revoking (scheduled or already revoked); nothing was modified'] };
+  return { ok: true, questionId: row.question_id, state: 'candidate' };
 }
 
 /**

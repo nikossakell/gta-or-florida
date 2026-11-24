@@ -31,6 +31,15 @@ const OPTIONS: ParseArgsConfig['options'] = {
   publisher: { type: 'string' },
   'not-duplicate': { type: 'boolean' },
   'link-verified-manually': { type: 'boolean' },
+  'factual-summary': { type: 'boolean' },
+  'verified-date': { type: 'string' },
+  'verified-location': { type: 'string' },
+  'evidence-url': { type: 'string', multiple: true },
+  'attest-human-written': { type: 'boolean' },
+  'attest-incident': { type: 'boolean' },
+  'attest-claims': { type: 'boolean' },
+  'attest-privacy': { type: 'boolean' },
+  'verification-notes': { type: 'string' },
   reason: { type: 'string' },
   message: { type: 'string' },
   question: { type: 'string' },
@@ -50,8 +59,13 @@ const HELP = `Admin commands (talk to the Worker's protected API):
   candidates:show   --id <question|incident id|incident key>
   questions:approve --id <q> --play-title "…" --explanation "…" [--game GTA_III] [--location-verified --published-at YYYY-MM-DD --publisher "…"]
                     [--category weird] [--difficulty 2] [--not-duplicate] [--link-verified-manually]
+                    Independent Factual Summary (your own words about verified facts; no reuse of the source's wording):
+                    --factual-summary --verified-date YYYY-MM-DD --verified-location "Pace, Florida" --evidence-url <https> [--evidence-url …]
+                    --attest-human-written --attest-incident --attest-claims --attest-privacy [--verification-notes "…"]
   questions:edit    --id <q> [--play-title "…"] [--explanation "…"]
   questions:reject  --id <q> --reason "…"
+  questions:revoke  --id <q> --reason "…"   approved but never scheduled → back to candidate; then questions:approve again
+                    with new text (+ fresh --factual-summary attestations). Scheduled questions: use withdraw.
   withdraw          (--question <q> | --day YYYY-MM-DD) --reason "…" [--message "public text"]
   incidents:merge   --id <incident> --into <incident> --reason "…"
   incidents:unmerge --id <incident> --reason "…"
@@ -129,6 +143,21 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           ...(flag('not-duplicate') ? { notDuplicate: true } : {}),
           ...(flag('link-verified-manually') ? { linkVerifiedManually: true } : {}),
           ...(linkCheck ? { linkCheck } : {}),
+          ...(flag('factual-summary')
+            ? {
+                mode: 'factual_summary' as const,
+                factual: {
+                  humanWritten: flag('attest-human-written'),
+                  incidentVerified: flag('attest-incident'),
+                  claimsVerified: flag('attest-claims'),
+                  privacyChecked: flag('attest-privacy'),
+                  verifiedDate: need('verified-date'),
+                  verifiedLocation: need('verified-location'),
+                  evidenceUrls: (vals['evidence-url'] as unknown as string[] | undefined) ?? [],
+                  ...(str('verification-notes') ? { notes: str('verification-notes') } : {}),
+                },
+              }
+            : {}),
         });
         console.log(`Approved ${r.questionId}.`);
         return 0;
@@ -147,6 +176,20 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     case 'questions:reject':
       print(await api.review({ questionId: need('id'), action: 'reject', reason: need('reason') }), json);
       return 0;
+    case 'questions:revoke': {
+      try {
+        const r = await api.review({ questionId: need('id'), action: 'revoke', reason: need('reason') });
+        console.log(`Approval of ${r.questionId} revoked; it is a candidate again. Re-approve it with new text and fresh attestations.`);
+        return 0;
+      } catch (error) {
+        if (error instanceof WorkerApiError && Array.isArray(error.details)) {
+          console.error('Revoke refused:');
+          for (const e of error.details as string[]) console.error(`  - ${e}`);
+          return 2;
+        }
+        throw error;
+      }
+    }
     case 'withdraw': {
       const target = str('question') ? 'question' : str('day') ? 'day' : null;
       if (!target) throw new Error('--question <id> or --day YYYY-MM-DD is required');

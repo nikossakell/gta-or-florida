@@ -151,6 +151,15 @@ describe('auto-publish gate (policy state machine)', () => {
     expect(r!.gate!.reasons).toContain('MANUAL_SUBMISSION');
   });
 
+  it('refuses the staging-only Florida Man dataset in production, accepts it as a candidate in staging', async () => {
+    const item = floridaItem(18);
+    item.reference.provider = 'floridaman_dataset';
+    const [prod] = await runImport([item], { APP_ENV: 'production', AUTO_PUBLISH_MODE: 'shadow' });
+    expect(prod).toMatchObject({ outcome: 'invalid', errors: [expect.stringMatching(/^PROVIDER_NOT_ALLOWED/)] });
+    const [staging] = await runImport([item], { APP_ENV: 'staging', AUTO_PUBLISH_MODE: 'shadow' });
+    expect(staging).toMatchObject({ outcome: 'inserted', questionState: 'candidate' });
+  });
+
   it('registers an unknown publisher as unreviewed on import', async () => {
     const unknown = floridaItem(17);
     unknown.reference.provider = 'manual';
@@ -409,5 +418,333 @@ describe('end-to-end: import → review → schedule → play → withdraw', () 
     const gone = await call('/api/challenge/today');
     expect(gone.status).toBe(410);
     expect((await gone.json()).error.code).toBe('ROUND_WITHDRAWN');
+  });
+});
+
+describe('Independent Factual Summary approval (mode factual_summary)', () => {
+  const ORIGINAL = 'Pace Man Pleads Guilty to Theft of National Park Signs';
+  const URL_ = 'https://news.example.org/news/park-signs';
+  const link = (u = URL_) => ({ status: 'ok', httpStatus: 200, finalUrl: u, checkedAt: '2026-11-22T11:00:00.000Z' });
+  const attest = (o: Record<string, unknown> = {}) => ({
+    humanWritten: true,
+    incidentVerified: true,
+    claimsVerified: true,
+    privacyChecked: true,
+    verifiedDate: '2026-11-20',
+    verifiedLocation: 'Pace, Florida',
+    evidenceUrls: [URL_],
+    ...o,
+  });
+  const human = {
+    playTitle: 'A collector quietly carted off dozens of federal signs from a protected seashore',
+    explanation: 'He admitted in federal court that he removed the signs from protected federal land. Prosecutors handled it as theft of government property.',
+  };
+  const approve = (body: Record<string, unknown>, env?: Record<string, string>) =>
+    call('/api/v1/admin/review', { ...postJson({ action: 'approve', ...body }, ADMIN_TOKEN, { 'x-actor': 'owner' }), ...(env ? { env } : {}) });
+  async function importOne(o: { host?: string; provider?: string; url?: string } = {}) {
+    const item = floridaItem(50);
+    const url = o.url ?? (o.host ? `https://${o.host}/news/park-signs` : URL_);
+    item.reference.originalUrl = item.reference.canonicalUrl = url;
+    item.reference.linkCheck = null;
+    item.reference.originalTitle = ORIGINAL;
+    // Default: discovered through an index (GDELT), not by fetching the publisher's feed.
+    item.reference.provider = o.provider ?? 'gdelt';
+    const res = (await (await importReq([item])).json()) as ImportResponse;
+    expect(res.results[0]!.outcome).toBe('inserted');
+    return (await h.db.prepare('SELECT id FROM questions').first<{ id: string }>())!.id;
+  }
+  const errorsOf = async (r: Response | { json(): Promise<unknown> }) => ((await r.json()) as { errors?: string[] }).errors ?? [];
+
+  it('publishes verified facts in original wording from an unreviewed source; the licensed path still refuses it', async () => {
+    const id = await importOne();
+    const licensed = await errorsOf(await approve({ questionId: id, ...human, linkCheck: link() }));
+    expect(licensed.join('\n')).toMatch(/SOURCE_UNREVIEWED[\s\S]*use mode factual_summary/);
+
+    const ok = await approve({ questionId: id, ...human, linkCheck: link(), mode: 'factual_summary', factual: attest() });
+    expect(ok.status).toBe(200);
+    const q = await h.db.prepare('SELECT quality_state, play_title, approval_actor_type FROM questions WHERE id = ?').bind(id).first();
+    expect(q).toEqual({ quality_state: 'approved', play_title: human.playTitle, approval_actor_type: 'human' });
+    const ref = await h.db.prepare('SELECT published_at FROM source_references').first<{ published_at: string }>();
+    expect(ref!.published_at).toBe('2026-11-20');
+    const log = await h.db.prepare(`SELECT decision, details FROM review_log WHERE entity_id = ? AND decision LIKE 'approved%'`).bind(id).first<{ decision: string; details: string }>();
+    expect(log!.decision).toBe('approved:factual_summary');
+    expect(JSON.parse(log!.details)).toMatchObject({ mode: 'factual_summary', sourceLicense: 'unreviewed', factual: { evidenceUrls: [URL_], verifiedLocation: 'Pace, Florida', humanWritten: true } });
+    // The publisher's headline is never served for an unlicensed source.
+    const src = await h.db.prepare('SELECT can_display_original_title FROM sources WHERE id = ?').bind('publisher:news.example.org').first<{ can_display_original_title: number }>();
+    expect(src!.can_display_original_title).toBe(0);
+  });
+
+  it('requires every human verification, explicit wording, a Florida location, a real date and on-source evidence', async () => {
+    const id = await importOne();
+    const missing = await errorsOf(await approve({ questionId: id, ...human, linkCheck: link(), mode: 'factual_summary' }));
+    expect(missing).toContain("FACTUAL_ATTESTATION_MISSING: factual_summary mode needs the reviewer's verification (factual)");
+    const flags = await errorsOf(
+      await approve({ questionId: id, linkCheck: link(), mode: 'factual_summary', factual: attest({ humanWritten: false, incidentVerified: false, claimsVerified: false, privacyChecked: false, verifiedDate: '2031-01-01', verifiedLocation: 'Mobile, Alabama', evidenceUrls: ['https://elsewhere.example/a'] }) }),
+    );
+    const codes = flags.map((e) => e.split(':')[0]);
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        'FACTUAL_TITLE_MISSING',
+        'FACTUAL_EXPLANATION_MISSING',
+        'FACTUAL_NOT_HUMAN_WRITTEN',
+        'FACTUAL_INCIDENT_UNVERIFIED',
+        'FACTUAL_CLAIMS_UNVERIFIED',
+        'FACTUAL_PRIVACY_UNCHECKED',
+        'FACTUAL_DATE_INVALID',
+        'FACTUAL_LOCATION_NOT_FLORIDA',
+        'FACTUAL_PROVENANCE',
+      ]),
+    );
+    expect((await h.db.prepare('SELECT quality_state FROM questions').first<{ quality_state: string }>())!.quality_state).toBe('candidate');
+  });
+
+  it('catches near-copies of the source headline (title similarity, shared phrases)', async () => {
+    const id = await importOne();
+    const near = await errorsOf(await approve({ questionId: id, playTitle: 'Pace man pleads guilty in theft of national park signage', explanation: human.explanation, linkCheck: link(), mode: 'factual_summary', factual: attest() }));
+    expect(near.join('\n')).toMatch(/PLAY_TITLE_NEAR_COPY/);
+    const phrase = await errorsOf(await approve({ questionId: id, playTitle: human.playTitle, explanation: 'Records show he pleads guilty to theft of national park signs and paid restitution.', linkCheck: link(), mode: 'factual_summary', factual: attest() }));
+    expect(phrase.join('\n')).toMatch(/EXPLANATION_SHARED_PHRASE: repeats \d+ consecutive words/);
+  });
+
+  it('keeps every existing safety/editorial check (giveaways, duplicates, link) in factual mode', async () => {
+    const id = await importOne();
+    const r = await errorsOf(await approve({ questionId: id, playTitle: 'A Florida collector carted off dozens of federal signs', explanation: human.explanation, mode: 'factual_summary', factual: attest() }));
+    expect(r.join('\n')).toMatch(/PLAY_TITLE_GIVEAWAY/);
+    expect(r.join('\n')).toMatch(/fresh link check is required/);
+  });
+
+  it('cannot be used to bypass blocked sources, unauthorized feeds or the dataset production restriction', async () => {
+    const blocked = await importOne({ host: 'www.theonion.com' });
+    expect((await errorsOf(await approve({ questionId: blocked, ...human, linkCheck: link('https://www.theonion.com/news/park-signs'), mode: 'factual_summary', factual: attest({ evidenceUrls: ['https://www.theonion.com/news/park-signs'] }) }))).join('\n')).toMatch(/SOURCE_BLOCKED/);
+
+    await h.reset();
+    const rss = await importOne({ provider: 'rss' });
+    expect((await errorsOf(await approve({ questionId: rss, ...human, linkCheck: link(), mode: 'factual_summary', factual: attest() }))).join('\n')).toMatch(/UNAUTHORIZED_COLLECTION/);
+
+    await h.reset();
+    const ds = await importOne({ provider: 'floridaman_dataset' });
+    const prod = await errorsOf(await approve({ questionId: ds, ...human, linkCheck: link(), mode: 'factual_summary', factual: attest() }, { APP_ENV: 'production' }));
+    expect(prod.join('\n')).toMatch(/PROVIDER_NOT_ALLOWED/);
+    expect((await h.db.prepare('SELECT quality_state FROM questions').first<{ quality_state: string }>())!.quality_state).toBe('candidate');
+  });
+
+  it('never auto-approves: the gate still routes imports to candidates', async () => {
+    const id = await importOne();
+    expect((await h.db.prepare('SELECT quality_state FROM questions WHERE id = ?').bind(id).first<{ quality_state: string }>())!.quality_state).toBe('candidate');
+  });
+});
+
+describe('Independent Factual Summary for GTA wiki events', () => {
+  it('approves original wording about a verified in-game event, links the wiki, and never sets a publication date', async () => {
+    const url = 'https://www.grandtheftwiki.com/Van_Heist';
+    const gta: ImportItem = {
+      ...floridaItem(60),
+      kind: 'GTA_CANON',
+      incidentKey: 'gta:grandtheftwiki:1874',
+      reference: { ...floridaItem(60).reference, provider: 'grandtheftwiki', providerKey: '1874', originalUrl: url, canonicalUrl: 'https://www.grandtheftwiki.com/index.php?curid=1874', publisher: 'Grand Theft Wiki', wikiPageId: 1874, wikiSection: null, originalTitle: 'Van Heist', publishedAt: null, linkCheck: null },
+      incident: { ...floridaItem(60).incident, gameDetected: 'GTA_III', floridaSignal: 'none', floridaEvidence: null },
+      question: { playTitleDraft: 'Van Heist', explanationDraft: '', difficulty: 2 },
+      ai: null,
+    };
+    await importReq([gta]);
+    const id = (await h.db.prepare('SELECT id FROM questions').first<{ id: string }>())!.id;
+    const body = {
+      questionId: id,
+      action: 'approve',
+      game: 'GTA_III',
+      playTitle: 'A crew ambushes an armored security van to grab the cash inside',
+      explanation: 'In this mission the player helps a crew stop a security van and take the money it carries. Verified on the linked wiki page.',
+      linkCheck: { status: 'ok', httpStatus: 200, finalUrl: url, checkedAt: '2026-11-22T11:00:00.000Z' },
+      mode: 'factual_summary',
+      factual: { humanWritten: true, incidentVerified: true, claimsVerified: true, privacyChecked: true, verifiedDate: '2026-11-22', verifiedLocation: 'Liberty City (GTA III)', evidenceUrls: [url] },
+    };
+    const r = await call('/api/v1/admin/review', postJson(body, ADMIN_TOKEN, { 'x-actor': 'owner' }));
+    expect(r.status).toBe(200);
+    const ref = await h.db.prepare('SELECT published_at, original_url FROM source_references').first();
+    expect(ref).toEqual({ published_at: null, original_url: url });
+    const src = await h.db.prepare(`SELECT license_status FROM sources WHERE id = 'grandtheftwiki'`).first();
+    expect(src).toEqual({ license_status: 'unreviewed' }); // wiki rights unchanged
+  });
+});
+
+describe('revoking an approval that should not stand (placeholder text), then a fresh approval', () => {
+  const url = 'https://www.grandtheftwiki.com/Van_Heist';
+  const PLACEHOLDER = { playTitle: 'YOUR OWN REVIEWED TITLE', explanation: 'YOUR OWN VERIFIED EXPLANATION' };
+  const REAL = {
+    playTitle: 'A crew ambushes an armored security van to grab the cash inside',
+    explanation: 'In this mission the player helps a crew stop a security van and take the money it carries. Verified on the linked wiki page.',
+  };
+  const factual = { humanWritten: true, incidentVerified: true, claimsVerified: true, privacyChecked: true, verifiedDate: '2026-11-22', verifiedLocation: 'Liberty City (GTA III)', evidenceUrls: [url] };
+  const linkCheck = { status: 'ok', httpStatus: 200, finalUrl: url, checkedAt: '2026-11-22T11:00:00.000Z' };
+  const review = (body: Record<string, unknown>, token = ADMIN_TOKEN) => call('/api/v1/admin/review', postJson(body, token, { 'x-actor': 'owner' }));
+  const errorsOf = async (r: Response) => ((await r.json()) as { errors?: string[] }).errors ?? [];
+  const approveBody = (id: string, o: Record<string, unknown> = {}) => ({ questionId: id, action: 'approve', game: 'GTA_III', linkCheck, mode: 'factual_summary', factual, ...REAL, ...o });
+
+  async function importGta(): Promise<string> {
+    const gta: ImportItem = {
+      ...floridaItem(60),
+      kind: 'GTA_CANON',
+      incidentKey: 'gta:grandtheftwiki:1874',
+      reference: { ...floridaItem(60).reference, provider: 'grandtheftwiki', providerKey: '1874', originalUrl: url, canonicalUrl: 'https://www.grandtheftwiki.com/index.php?curid=1874', publisher: 'Grand Theft Wiki', wikiPageId: 1874, wikiSection: null, originalTitle: 'Van Heist', publishedAt: null, linkCheck: null },
+      incident: { ...floridaItem(60).incident, gameDetected: 'GTA_III', floridaSignal: 'none', floridaEvidence: null },
+      question: { playTitleDraft: 'Van Heist', explanationDraft: '', difficulty: 2 },
+      ai: null,
+    };
+    await importReq([gta]);
+    return (await h.db.prepare('SELECT id FROM questions').first<{ id: string }>())!.id;
+  }
+  /** Reproduces the incident: an approval made before placeholder text was refused (simulated in the test DB only). */
+  async function legacyPlaceholderApproval(): Promise<string> {
+    const id = await importGta();
+    expect((await review(approveBody(id))).status).toBe(200);
+    await h.db.prepare('UPDATE questions SET play_title = ?, explanation = ? WHERE id = ?').bind(PLACEHOLDER.playTitle, PLACEHOLDER.explanation, id).run();
+    return id;
+  }
+  const provenance = () =>
+    h.db.prepare('SELECT sr.id, sr.provider, sr.source_id, sr.original_url, sr.original_title, sr.canonical_url, sr.publisher, sr.published_at, q.primary_reference_id, q.incident_id FROM questions q JOIN source_references sr ON sr.id = q.primary_reference_id').first();
+
+  it('refuses placeholder and generic editorial text at approval, in every mode', async () => {
+    const id = await importGta();
+    const errs = await errorsOf(await review(approveBody(id, PLACEHOLDER)));
+    const codes = errs.map((e) => e.split(':')[0]);
+    expect(codes).toEqual(expect.arrayContaining(['PLAY_TITLE_PLACEHOLDER', 'PLAY_TITLE_ALL_CAPS', 'EXPLANATION_PLACEHOLDER', 'EXPLANATION_ALL_CAPS']));
+    const generic = await errorsOf(await review(approveBody(id, { playTitle: 'Title title title title', explanation: 'See the source for the details of this one, see the source' })));
+    expect(generic.map((e) => e.split(':')[0])).toEqual(expect.arrayContaining(['PLAY_TITLE_GENERIC']));
+    const licensed = await errorsOf(await review({ questionId: id, action: 'approve', game: 'GTA_III', linkCheck, ...PLACEHOLDER }));
+    expect(licensed.join('\n')).toMatch(/PLAY_TITLE_PLACEHOLDER[\s\S]*EXPLANATION_PLACEHOLDER/);
+    expect((await h.db.prepare('SELECT quality_state FROM questions WHERE id = ?').bind(id).first())).toEqual({ quality_state: 'candidate' });
+  });
+
+  it('only admins can revoke, with a reason, and only approved questions', async () => {
+    const id = await legacyPlaceholderApproval();
+    expect((await review({ questionId: id, action: 'revoke', reason: 'placeholder text' }, SERVICE_TOKEN)).status).toBe(403);
+    expect((await call('/api/v1/admin/review', postJson({ questionId: id, action: 'revoke', reason: 'placeholder text' }, 'wrong-token'))).status).toBe(401);
+    expect(await errorsOf(await review({ questionId: id, action: 'revoke' }))).toEqual([expect.stringMatching(/reason is required/)]);
+    expect((await h.db.prepare('SELECT quality_state FROM questions WHERE id = ?').bind(id).first())).toEqual({ quality_state: 'approved' });
+
+    expect((await review({ questionId: id, action: 'revoke', reason: 'placeholder text' })).status).toBe(200);
+    // A second revoke (now a candidate) and revoking a rejected question are refused.
+    expect(await errorsOf(await review({ questionId: id, action: 'revoke', reason: 'placeholder text' }))).toEqual([expect.stringMatching(/Question is candidate/)]);
+    await review({ questionId: id, action: 'reject', reason: 'not fun' });
+    expect(await errorsOf(await review({ questionId: id, action: 'revoke', reason: 'placeholder text' }))).toEqual([expect.stringMatching(/Question is rejected/)]);
+  });
+
+  it('refuses scheduled questions (withdraw is the path for those) and changes nothing', async () => {
+    const id = await legacyPlaceholderApproval();
+    await h.db.batch([
+      h.db.prepare(`INSERT INTO daily_rounds (day, number, florida_count) VALUES ('2026-11-30', 9, 3)`),
+      h.db.prepare(`INSERT INTO daily_round_items (day, position, question_id) VALUES ('2026-11-30', 1, ?)`).bind(id),
+    ]);
+    const errs = await errorsOf(await review({ questionId: id, action: 'revoke', reason: 'placeholder text' }));
+    expect(errs).toEqual([expect.stringMatching(/scheduled on 2026-11-30; withdraw it instead/)]);
+    expect((await h.db.prepare('SELECT quality_state, approved_by FROM questions WHERE id = ?').bind(id).first())).toEqual({ quality_state: 'approved', approved_by: 'owner' });
+    expect((await h.db.prepare(`SELECT COUNT(*) AS n FROM review_log WHERE decision = 'approval_revoked'`).first())).toEqual({ n: 0 });
+  });
+
+  it('returns the question to review, keeps source/provenance/audit, and requires new text plus fresh attestations', async () => {
+    const id = await legacyPlaceholderApproval();
+    const before = await provenance();
+
+    const r = await review({ questionId: id, action: 'revoke', reason: 'Approved by mistake with placeholder text' });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, questionId: id, state: 'candidate' });
+    const q = await h.db
+      .prepare('SELECT quality_state, play_title_reviewed, explanation, approved_by, approved_at, approval_actor_type FROM questions WHERE id = ?')
+      .bind(id)
+      .first();
+    expect(q).toEqual({ quality_state: 'candidate', play_title_reviewed: 0, explanation: '', approved_by: null, approved_at: null, approval_actor_type: null });
+    expect((await h.db.prepare('SELECT verification_status FROM incidents').first())).toEqual({ verification_status: 'unverified' });
+    expect(await provenance()).toEqual(before);
+    const revoked = await h.db.prepare(`SELECT actor_type, actor_id, reason, details FROM review_log WHERE decision = 'approval_revoked'`).first<{ actor_type: string; actor_id: string; reason: string; details: string }>();
+    expect(revoked).toMatchObject({ actor_type: 'human', actor_id: 'owner', reason: 'Approved by mistake with placeholder text' });
+    expect(JSON.parse(revoked!.details).revoked).toMatchObject({ ...PLACEHOLDER, approvedBy: 'owner', approvalActorType: 'human' });
+
+    // A fresh approval runs the full factual-summary validation again.
+    const noAttest = await errorsOf(await review(approveBody(id, { factual: undefined })));
+    expect(noAttest.join('\n')).toMatch(/FACTUAL_ATTESTATION_MISSING/);
+    const notAttested = await errorsOf(await review(approveBody(id, { factual: { ...factual, claimsVerified: false, privacyChecked: false } })));
+    expect(notAttested.map((e) => e.split(':')[0])).toEqual(expect.arrayContaining(['FACTUAL_CLAIMS_UNVERIFIED', 'FACTUAL_PRIVACY_UNCHECKED']));
+    const noText = await errorsOf(await review(approveBody(id, { playTitle: undefined, explanation: undefined })));
+    expect(noText.join('\n')).toMatch(/FACTUAL_TITLE_MISSING[\s\S]*FACTUAL_EXPLANATION_MISSING/);
+    const samePlaceholder = await errorsOf(await review(approveBody(id, PLACEHOLDER)));
+    expect(samePlaceholder.join('\n')).toMatch(/PLAY_TITLE_PLACEHOLDER[\s\S]*EXPLANATION_PLACEHOLDER/);
+    // The licensed path cannot quietly reuse the stored draft either (and the wiki is not licensed).
+    const licensed = await errorsOf(await review({ questionId: id, action: 'approve', game: 'GTA_III', linkCheck }));
+    expect(licensed.join('\n')).toMatch(/SOURCE_UNREVIEWED[\s\S]*playTitle is required[\s\S]*explanation is required/);
+    expect((await h.db.prepare('SELECT quality_state FROM questions WHERE id = ?').bind(id).first())).toEqual({ quality_state: 'candidate' });
+
+    expect((await review(approveBody(id))).status).toBe(200);
+    const after = await h.db.prepare('SELECT quality_state, play_title, explanation, approved_by FROM questions WHERE id = ?').bind(id).first();
+    expect(after).toEqual({ quality_state: 'approved', play_title: REAL.playTitle, explanation: REAL.explanation, approved_by: 'owner' });
+    expect((await h.db.prepare('SELECT verification_status FROM incidents').first())).toEqual({ verification_status: 'verified' });
+    const trail = await h.db.prepare(`SELECT decision FROM review_log WHERE entity_id = ? AND entity_type = 'question' ORDER BY id`).bind(id).all<{ decision: string }>();
+    expect(trail.results.map((t) => t.decision)).toEqual(['import:candidate', 'approved:factual_summary', 'approval_revoked', 'approved:factual_summary']);
+  });
+});
+
+describe('end-to-end with both approval modes: 3 licensed Florida + 2 factual-summary GTA', () => {
+  it('imports, approves (human), schedules and serves one playable round; a revoked GTA question never reaches it', async () => {
+    await seedSource(h.db, APPROVED_PUBLISHER);
+    const items: ImportItem[] = [];
+    for (let i = 0; i < 3; i++) items.push(floridaItem(80 + i));
+    const gtaTitles = [
+      'A crew ambushes an armored security van to grab the cash inside',
+      'A getaway driver loses the police by repainting the car mid-chase',
+      'A courier races across the city to deliver a briefcase before midnight',
+    ];
+    for (let i = 0; i < 3; i++) {
+      const url = `https://www.grandtheftwiki.com/Mission_${900 + i}`;
+      const base = floridaItem(90 + i);
+      items.push({
+        ...base,
+        kind: 'GTA_CANON',
+        incidentKey: `gta:grandtheftwiki:${900 + i}`,
+        reference: { ...base.reference, provider: 'grandtheftwiki', providerKey: `${900 + i}`, originalUrl: url, canonicalUrl: url, publisher: 'Grand Theft Wiki', wikiPageId: 900 + i, wikiSection: null, originalTitle: `Mission ${i}`, publishedAt: null, linkCheck: null },
+        incident: { ...base.incident, gameDetected: 'GTA_III', floridaSignal: 'none', floridaEvidence: null },
+        question: { playTitleDraft: `Mission ${i}`, explanationDraft: '', difficulty: 2 },
+        ai: null,
+      });
+    }
+    await importReq(items);
+    await seedSource(h.db, APPROVED_PUBLISHER); // owner's licensed policy for the Florida publisher; the wiki stays unreviewed
+    expect(await h.db.prepare(`SELECT license_status FROM sources WHERE id = 'grandtheftwiki'`).first()).toEqual({ license_status: 'unreviewed' });
+
+    const { results } = await h.db.prepare(`SELECT q.id, q.answer_kind, q.play_title, sr.original_url FROM questions q JOIN source_references sr ON sr.id = q.primary_reference_id ORDER BY sr.original_url`).all<{ id: string; answer_kind: string; play_title: string; original_url: string }>();
+    const gtaIds: string[] = [];
+    for (const q of results) {
+      const body =
+        q.answer_kind === 'FLORIDA'
+          ? { questionId: q.id, action: 'approve', playTitle: q.play_title, explanation: 'Verified against the linked source by the reviewer during the test.', locationVerified: true, linkVerifiedManually: true }
+          : {
+              questionId: q.id,
+              action: 'approve',
+              game: 'GTA_III',
+              playTitle: gtaTitles[gtaIds.length],
+              explanation: 'In this mission the player does exactly what the prompt says. Verified on the linked wiki page by the reviewer.',
+              linkCheck: { status: 'ok', httpStatus: 200, finalUrl: q.original_url, checkedAt: '2026-11-22T11:00:00.000Z' },
+              mode: 'factual_summary',
+              factual: { humanWritten: true, incidentVerified: true, claimsVerified: true, privacyChecked: true, verifiedDate: '2026-11-22', verifiedLocation: 'Liberty City (GTA III)', evidenceUrls: [q.original_url] },
+            };
+      const r = await call('/api/v1/admin/review', postJson(body, ADMIN_TOKEN, { 'x-actor': 'owner' }));
+      expect(r.status, await r.clone().text()).toBe(200);
+      if (q.answer_kind === 'GTA') gtaIds.push(q.id);
+    }
+    const modes = await h.db.prepare(`SELECT approval_mode, COUNT(*) AS n FROM questions WHERE approval_log_id IS NOT NULL GROUP BY approval_mode ORDER BY approval_mode`).all();
+    expect(modes.results).toEqual([{ approval_mode: 'factual_summary', n: 3 }, { approval_mode: 'licensed', n: 3 }]);
+
+    // One GTA approval is revoked before scheduling: only the other two may be used.
+    const revoked = gtaIds[0]!;
+    expect((await call('/api/v1/admin/review', postJson({ questionId: revoked, action: 'revoke', reason: 'wrong game checked' }, ADMIN_TOKEN, { 'x-actor': 'owner' }))).status).toBe(200);
+
+    const sched = await (await call('/api/v1/admin/schedule', postJson({ days: 1 }, SERVICE_TOKEN))).json();
+    expect(sched.added).toEqual([{ date: TODAY, floridaCount: 3 }]);
+    const items5 = await h.db.prepare('SELECT question_id FROM daily_round_items ORDER BY position').all<{ question_id: string }>();
+    expect(items5.results.map((x) => x.question_id)).not.toContain(revoked);
+
+    const today = await (await call('/api/challenge/today')).json();
+    expect(today.questions).toHaveLength(5);
+    const fin = await (await call(`/api/challenge/${TODAY}/finish`, postJson({ answers: today.questions.map((q: { id: string }) => ({ questionId: q.id, choice: 'GTA' })) }))).json();
+    expect(fin.questions.filter((q: { answer: string }) => q.answer === 'gta')).toHaveLength(2);
+    expect(fin.questions.filter((q: { answer: string }) => q.answer === 'florida')).toHaveLength(3);
   });
 });

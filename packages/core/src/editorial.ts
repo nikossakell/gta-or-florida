@@ -57,3 +57,86 @@ export function explanationProblems(text: string): string[] {
 
 /** Problem code prefix ("PLAY_TITLE_GIVEAWAY: ..." → "PLAY_TITLE_GIVEAWAY"). */
 export const problemCode = (problem: string) => problem.split(':')[0]!;
+
+// ---------------------------------------------------------------------------
+// Near-copy safeguards for Independent Factual Summaries. They catch obvious copying of a source
+// headline; passing them is NOT proof of originality (the reviewer attests to that).
+// ---------------------------------------------------------------------------
+
+export const NEAR_COPY_SIMILARITY = 0.6;
+export const NEAR_COPY_SHARED_WORDS = 5;
+
+/** Longest run of consecutive identical words (after normalization) shared by two texts. */
+export function longestSharedWordRun(a: string, b: string): number {
+  const x = normalizeTitle(a).split(' ').filter(Boolean);
+  const y = normalizeTitle(b).split(' ').filter(Boolean);
+  let best = 0;
+  const prev = new Array<number>(y.length + 1).fill(0);
+  for (let i = 1; i <= x.length; i++) {
+    let diag = 0;
+    for (let j = 1; j <= y.length; j++) {
+      const tmp = prev[j]!;
+      prev[j] = x[i - 1] === y[j - 1] ? diag + 1 : 0;
+      if (prev[j]! > best) best = prev[j]!;
+      diag = tmp;
+    }
+  }
+  return best;
+}
+
+/** Problems when `text` copies the source headline too closely. Empty = no obvious copying detected. */
+export function nearCopyProblems(text: string, sourceHeadline: string, field: 'PLAY_TITLE' | 'EXPLANATION'): string[] {
+  if (!text || !sourceHeadline) return [];
+  const out: string[] = [];
+  if (field === 'PLAY_TITLE') {
+    const sim = titleSimilarity(text, sourceHeadline);
+    if (sim >= NEAR_COPY_SIMILARITY) out.push(`PLAY_TITLE_NEAR_COPY: too close to the source headline (similarity ${sim.toFixed(2)}); describe the facts in your own words`);
+  }
+  const run = longestSharedWordRun(text, sourceHeadline);
+  if (run >= NEAR_COPY_SHARED_WORDS) out.push(`${field}_SHARED_PHRASE: repeats ${run} consecutive words of the source headline`);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Placeholder / generic-text guard for human approvals. Template text such as
+// "YOUR OWN REVIEWED TITLE" satisfies the length rules, so it is refused explicitly.
+// ---------------------------------------------------------------------------
+
+const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
+  /\byour own\b/i,
+  /\b(placeholder|lorem ipsum|dummy text|sample text|fixme|todo|tbd)\b/i,
+  /\bx{3,}\b/i,
+  /\b(goes|go) here\b/i,
+  /\b(insert|enter|write|type|add|put)\b[^.]{0,40}\bhere\b/i,
+  /\b(reviewed|verified|neutral|example|sample|dummy|test) (play )?(title|explanation|summary|text)\b/i,
+  /\{\{|\}\}|\[[A-Z_ ]{3,}\]|\{[A-Za-z_ ]{3,}\}/,
+];
+
+/** Whole texts that say nothing about the incident. */
+const GENERIC_TEXTS = new Set([
+  'title', 'play title', 'explanation', 'question', 'test', 'testing', 'n a', 'none', 'null', 'undefined', 'unknown',
+  'same as above', 'see source', 'see link', 'see the source', 'see the link', 'no explanation', 'fill in', 'fill me in',
+]);
+
+/** Minimum distinct words (2+ letters) for text to describe an incident at all. */
+const MIN_DISTINCT_WORDS = { PLAY_TITLE: 3, EXPLANATION: 5 } as const;
+
+/**
+ * Problems when reviewer text is a placeholder, template slot, all-capitals or too generic to be a real
+ * summary. Empty = no placeholder detected (it does not judge accuracy; the reviewer attests to that).
+ */
+export function placeholderProblems(text: string, field: 'PLAY_TITLE' | 'EXPLANATION'): string[] {
+  const out: string[] = [];
+  const clean = text.trim();
+  const normalized = normalizeTitle(clean);
+  if (!clean || PLACEHOLDER_PATTERNS.some((re) => re.test(clean)) || GENERIC_TEXTS.has(normalized)) {
+    out.push(`${field}_PLACEHOLDER: looks like placeholder or template text; write the real ${field === 'PLAY_TITLE' ? 'title' : 'explanation'}`);
+  }
+  const letters = clean.replace(/[^\p{L}]/gu, '');
+  if (letters.length >= 8 && letters === letters.toUpperCase() && letters !== letters.toLowerCase()) {
+    out.push(`${field}_ALL_CAPS: is written in capitals (typical of placeholders); use normal sentence case`);
+  }
+  const distinct = new Set(normalized.split(' ').filter((w) => /\p{L}{2,}/u.test(w)));
+  if (distinct.size < MIN_DISTINCT_WORDS[field]) out.push(`${field}_GENERIC: too generic (${distinct.size} distinct words); describe the specific incident`);
+  return out;
+}

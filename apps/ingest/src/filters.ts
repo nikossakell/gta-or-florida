@@ -36,3 +36,47 @@ export function floridaEvidence(title: string, placeNames: readonly string[]): s
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Unusualness ("is this a fun, unlikely-but-true story?"): a deterministic ranking signal.
+// It can reject (official sources below a threshold) or annotate for the reviewer — never approve.
+// ---------------------------------------------------------------------------
+
+const UNUSUAL_CUES: [label: string, re: RegExp][] = [
+  ['animal', /\b(alligators?|gators?|crocodiles?|pythons?|boas?|snakes?|iguanas?|manatees?|monkeys?|primates?|lemurs?|sloths?|emus?|ostrich(es)?|kangaroos?|raccoons?|possums?|opossums?|squirrels?|bears?|panthers?|bobcats?|sharks?|dolphins?|turtles?|tortoises?|parrots?|macaws?|cockatoos?|songbirds?|birds?|owls?|eagles?|roosters?|chickens?|goats?|pigs?|hogs?|horses?|ponies|donkeys?|llamas?|alpacas?|frogs?|toads?|lizards?|geckos?|tarantulas?|scorpions?|bees?|eels?|lobsters?|crabs?|conchs?|seahorses?|coral reefs?|orchids?|cactus|cacti)\b/i],
+  ['vehicle', /\b(lawn ?mowers?|golf carts?|airboats?|jet ?skis?|kayaks?|paddle ?boards?|scooters?|tractors?|forklifts?|hovercraft|blimps?|hot air balloons?|submarines?|semi-submersibles?|zambonis?)\b/i],
+  ['object', /\b(hot tubs?|toilets?|coolers?|inflatables?|costumes?|mascots?|wigs?|clowns?|pirates?|unicorns?|mermaids?|santa claus|pizzas?|tacos?|burritos?|nuggets?|drive-?thru|waffle house|bingo|slot machines?|fireworks|meteorites?|moon rocks?|cigars?|rum|cheese|eggs|mangoes|lottery tickets?|scratch-offs?|sneakers|beanie babies|pok[eé]mon|trading cards?|comic books?|dinosaur|fossils?|shipwrecks?|treasure|doubloons|gold coins?|statues?|drones?|park signs?|road signs?|yachts?|teak|artworks?|paintings?|warhol|picasso|banksy|doping|race ?horses?|golf balls?|jerseys?|memorabilia)\b/i],
+  ['deception', /\b(fake|faked|counterfeit\w*|impersonat\w*|pos(ed|ing) as|disguis\w*|dressed (up )?as|pretend\w*|bogus|phony|sham|fictitious|imaginary|self-proclaimed|claimed to be)\b/i],
+  ['odd_act', /\b(hid(den|ing)? (in|inside|under)|stuffed (in|into|inside)|strapped to|concealed (in|inside|under)|tried to (pay|sell|ship|mail|smuggle)|attempt(ed)? to (pay|sell|ship|mail|smuggle)|in (his|her|their) (pants|underwear|bra|luggage|carry-on|prosthetic))\b/i],
+  ['wildlife_crime', /\b(poach\w*|lacey act|endangered species|wildlife trafficking|smuggl\w* (protected|exotic|endangered|wildlife|reptiles?|birds?|eggs|turtles?|corals?))\b/i],
+  ['strange', /\b(psychic|witch\w*|exorcis\w*|ghosts?|haunted|space aliens?|extraterrestrials?|ufos?|zombies?|vampires?|time travel\w*|wizard|voodoo|bizarre|unusual|strange|weird|odd)\b/i],
+];
+
+const ROUTINE_CUES: [label: string, re: RegExp][] = [
+  ['routine_fraud', /\b((bank|wire|mail|health ?care|medicare|medicaid|tax|securities|insurance|mortgage|loan|ppp|pandemic|identity|credit card|investment|unemployment|benefits?|program) fraud|identity theft|money laundering|bank secrecy act|bribery|kickbacks?|embezzl\w*|tax evasion|false tax|tax returns?|ponzi|structuring)\b/i],
+  ['administrative', /\b(awards?|honou?r(s|ed)?|recogni[sz]ed|appoint\w*|sworn|retire\w*|statement|settle(s|d|ment)?|agrees? to pay|consent decree|civil (penalty|complaint|lawsuit)|annual report|grants?|outreach)\b/i],
+];
+
+export type Unusualness = { score: number; cues: string[] };
+
+/** +2 per distinct unusual cue group, −1 per routine cue group. 0 = ordinary; ≥ 2 = at least one unusual element. */
+export function unusualness(text: string): Unusualness {
+  const cues: string[] = [];
+  let score = 0;
+  for (const [label, re] of UNUSUAL_CUES) {
+    const m = re.exec(text);
+    if (m) {
+      score += 2;
+      cues.push(`${label}:${m[0].toLowerCase()}`);
+    }
+  }
+  for (const [label, re] of ROUTINE_CUES) {
+    if (re.test(text)) {
+      score -= 1;
+      cues.push(label);
+    }
+  }
+  return { score, cues };
+}
+
+export const describeUnusualness = (u: Unusualness) => `Unusualness: ${u.score}${u.cues.length ? ` (${u.cues.join(', ')})` : ''}`;

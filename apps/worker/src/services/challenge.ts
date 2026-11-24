@@ -27,48 +27,40 @@ import { ARCHIVE_DAYS, TIME_LIMIT_SECONDS } from '@gof/config';
 import { DEFAULT_WITHDRAWN_MESSAGE } from '@gof/core';
 import { isLocal, type Env } from '../env.ts';
 import { HttpError } from '../http.ts';
+import { APPROVAL_LOG_JOIN, ELIGIBILITY_COLUMNS, ineligibility, type EligibilityRow } from './eligibility.ts';
 
-type RoundRow = {
+type RoundRow = EligibilityRow & {
   day: string;
   number: number;
   status: 'scheduled' | 'published' | 'withdrawn';
   public_message: string | null;
   content_version: number;
   position: number | null;
-  question_id: string | null;
-  quality_state: string | null;
   answer_kind: 'FLORIDA' | 'GTA' | null;
-  play_title: string | null;
-  explanation: string | null;
-  is_fixture: number | null;
   kind: ContentKind | null;
-  game: string | null;
   category: string | null;
-  incident_status: string | null;
   original_url: string | null;
   final_url: string | null;
   original_title: string | null;
   publisher: string | null;
   published_at: string | null;
-  link_status: string | null;
   source_name: string | null;
-  license_status: string | null;
-  can_use_editorial_summary: number | null;
   can_display_original_title: number | null;
 };
 
 const ROUND_SQL = `
-  SELECT r.day, r.number, r.status, r.public_message, r.content_version,
-         i.position, q.id AS question_id, q.quality_state, q.answer_kind, q.play_title, q.explanation, q.is_fixture,
-         inc.kind, inc.game, inc.category, inc.status AS incident_status,
-         sr.original_url, sr.final_url, sr.original_title, sr.publisher, sr.published_at, sr.link_status,
-         s.name AS source_name, s.license_status, s.can_use_editorial_summary, s.can_display_original_title
+  SELECT r.day, r.number, r.status, r.public_message, r.content_version, i.position,
+         ${ELIGIBILITY_COLUMNS},
+         q.answer_kind, inc.category,
+         sr.original_url, sr.final_url, sr.original_title, sr.publisher, sr.published_at,
+         s.name AS source_name, s.can_display_original_title
     FROM daily_rounds r
     LEFT JOIN daily_round_items i ON i.day = r.day
     LEFT JOIN questions q ON q.id = i.question_id
     LEFT JOIN incidents inc ON inc.id = q.incident_id
     LEFT JOIN source_references sr ON sr.id = q.primary_reference_id
     LEFT JOIN sources s ON s.id = sr.source_id
+    ${APPROVAL_LOG_JOIN}
    WHERE r.day = ?
    ORDER BY i.position`;
 
@@ -121,18 +113,9 @@ export function createChallengeService(env: Env, now: () => Date = () => new Dat
     const head = results[0]!;
     if (head.status === 'withdrawn') throw new HttpError(410, 'ROUND_WITHDRAWN', head.public_message ?? DEFAULT_WITHDRAWN_MESSAGE);
 
-    // Defence in depth: a round is served only if every item is still publishable *now*.
-    const servable =
-      results.length === 5 &&
-      results.every(
-        (r) =>
-          r.question_id &&
-          r.quality_state === 'approved' &&
-          r.incident_status === 'active' &&
-          (r.is_fixture === 1
-            ? allowFixtures
-            : r.license_status === 'approved' && r.can_use_editorial_summary === 1 && (r.link_status === 'ok' || r.link_status === 'manual_ok')),
-      );
+    // Defence in depth: a round is served only if every item is still eligible *now*, under the same
+    // rules the scheduler used (approval provenance + mode, access restrictions, link, incident).
+    const servable = results.length === 5 && results.every((r) => ineligibility(r, { appEnv: env.APP_ENV, allowFixtures }) === null);
     if (!servable) throw notReady();
     return { day, number: head.number, contentVersion: head.content_version, questions: results.map(toQuestion), today };
   }

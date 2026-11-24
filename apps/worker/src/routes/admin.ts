@@ -100,9 +100,9 @@ export async function handleAdmin(request: Request, env: Env, url: URL, now: () 
     if (body.startDate && body.startDate < today) throw new HttpError(400, 'BAD_REQUEST', 'startDate cannot be in the past (published rounds are immutable).');
     const actorType = who.role === 'admin' ? ('human' as const) : ('service' as const);
     if (!body.startDate && !body.dryRun) {
-      return json(200, await ensureSchedule(db, { now: now(), aheadDays: Math.min(body.days, 60), allowFixtures: isLocal(env), actorId: who.actorId, actorType }));
+      return json(200, await ensureSchedule(db, { now: now(), aheadDays: Math.min(body.days, 60), allowFixtures: isLocal(env), actorId: who.actorId, actorType, appEnv: env.APP_ENV }));
     }
-    return json(200, await scheduleRounds(db, { startDate: body.startDate ?? today, days: body.days, dryRun: body.dryRun, allowFixtures: isLocal(env), actorId: who.actorId, actorType }));
+    return json(200, await scheduleRounds(db, { startDate: body.startDate ?? today, days: body.days, dryRun: body.dryRun, allowFixtures: isLocal(env), actorId: who.actorId, actorType, appEnv: env.APP_ENV }));
   }
 
   // --- admin only -----------------------------------------------------------
@@ -132,7 +132,7 @@ export async function handleAdmin(request: Request, env: Env, url: URL, now: () 
   if (path === '/review') {
     only(request, 'POST');
     const body = validate(reviewSchema, await readJson(request, MAX_ADMIN_BODY_BYTES));
-    const r = await review(db, body, who, now());
+    const r = await review(db, body, who, now(), env.APP_ENV);
     return json(r.ok ? 200 : 422, r.ok ? r : { error: { code: 'VALIDATION_FAILED', message: r.errors.join('\n') }, errors: r.errors });
   }
   if (path === '/withdraw') {
@@ -162,7 +162,7 @@ export async function handleAdmin(request: Request, env: Env, url: URL, now: () 
   }
   if (path === '/ensure-schedule') {
     only(request, 'POST');
-    return json(200, await ensureSchedule(db, { now: now(), aheadDays: SCHEDULE_AHEAD_DAYS, allowFixtures: isLocal(env), actorId: who.actorId, actorType: 'human' }));
+    return json(200, await ensureSchedule(db, { now: now(), aheadDays: SCHEDULE_AHEAD_DAYS, allowFixtures: isLocal(env), actorId: who.actorId, actorType: 'human', appEnv: env.APP_ENV }));
   }
   throw new HttpError(404, 'NOT_FOUND', 'Unknown admin route.');
 }

@@ -9,6 +9,9 @@
  */
 import { createHash } from 'node:crypto';
 import {
+  BEARER_TOKEN_MAX,
+  BEARER_TOKEN_MIN,
+  bearerTokenProblems,
   MAX_IMPORT_ITEMS,
   type ImportItem,
   type ImportItemResult,
@@ -61,7 +64,14 @@ const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 
 export function createWorkerClient(opts: WorkerClientOptions) {
   const base = normalizeBaseUrl(opts.baseUrl);
-  if (!opts.token || opts.token.length < 32) throw new Error('Worker token is missing or shorter than 32 characters');
+  // Fail fast on a token the API's bearer parser can never accept (it would answer "Missing bearer token").
+  const tokenProblems = bearerTokenProblems(opts.token);
+  if (tokenProblems.length) {
+    throw new Error(
+      `Worker token is invalid: ${tokenProblems.join('; ')}. It must be ${BEARER_TOKEN_MIN}-${BEARER_TOKEN_MAX} visible ASCII characters — ` +
+        're-set the secret without a trailing newline or "Bearer " prefix.',
+    );
+  }
   const fetchImpl = opts.fetchImpl ?? fetch;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const maxRetries = opts.maxRetries ?? 3;

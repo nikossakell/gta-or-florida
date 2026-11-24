@@ -11,27 +11,16 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { createMockAiProvider, createWorkersAiBindingProvider, type AiProvider } from '@gof/ingest/classify.ts';
-import { createWorkerClient } from '@gof/ingest/import.ts';
 import { parseSourcesConfig } from '@gof/ingest/normalize.ts';
 import sourcesJson from '../../../data/sources.json';
 import { runIngestion, StepBudgetError, type IngestParams, type StepLike } from './ingest.ts';
-import { parseLimits, type LimitVars } from './limits.ts';
+import { apiClientFor } from './api-client.ts';
+import type { Env } from './env.ts';
+import { parseLimits } from './limits.ts';
+import { SubrequestMeter } from './subrequests.ts';
 
-export type Env = LimitVars & {
-  APP_ENV: 'local' | 'staging' | 'production';
-  /** "true" enables the cron. Manual `wrangler workflows trigger` runs work regardless. */
-  INGEST_ENABLED?: string;
-  /** binding (default) | mock | off */
-  AI_PROVIDER?: string;
-  GRAND_THEFT_WIKI_API?: string;
-  HTTP_USER_AGENT?: string;
-  /** Same value as the API Worker's INGESTION_IMPORT_TOKEN for this environment (secret). */
-  INGESTION_IMPORT_TOKEN: string;
-  /** Service binding to THIS environment's API Worker. */
-  API: Fetcher;
-  AI?: Ai;
-  INGEST_WORKFLOW: Workflow<IngestParams>;
-};
+export type { Env };
+
 
 const USER_AGENT = 'gta-or-florida-ingest/0.4 (unofficial fan trivia project; metadata only)';
 const cfg = parseSourcesConfig(sourcesJson);
@@ -52,14 +41,10 @@ function aiFor(env: Env): AiProvider | null {
 export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
   override async run(evt: WorkflowEvent<IngestParams>, step: WorkflowStep) {
     const env = this.env;
-    const client = createWorkerClient({
-      // The host is a placeholder: requests go through the Service Binding, never the public internet.
-      baseUrl: 'https://api.internal',
-      token: env.INGESTION_IMPORT_TOKEN,
-      actor: 'ingest-workflow',
-      fetchImpl: ((input: RequestInfo | URL, init?: RequestInit) => env.API.fetch(input as never, init as never)) as typeof fetch,
-      maxRetries: 1,
-    });
+    const limits = parseLimits(env);
+    // One meter per instance run: API (Service Binding), discovery, link checks, AI and Workflow calls.
+    const meter = new SubrequestMeter(limits.subrequestBudget);
+    const client = apiClientFor(env, meter);
     const adapter: StepLike = { do: (name, config, fn) => step.do(name, config as never, fn as never) as never };
     try {
       return await runIngestion(
@@ -67,13 +52,24 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
         adapter,
         {
           cfg,
-          limits: parseLimits(env),
+          limits,
           client,
           ai: aiFor(env),
           fetchImpl: (input, init) => fetch(input, init),
           userAgent: env.HTTP_USER_AGENT || USER_AGENT,
           wikiApi: env.GRAND_THEFT_WIKI_API || 'https://www.grandtheftwiki.com/api.php',
           event,
+          appEnv: env.APP_ENV,
+          meter,
+          nonRetryable: (e) => new NonRetryableError(e.message),
+          spawn: async (id, params) => {
+            try {
+              await env.INGEST_WORKFLOW.create({ id, params });
+            } catch (error) {
+              // Deterministic successor ids: a second create for the same cursor is a no-op.
+              if (!/already_exists/.test(String((error as Error)?.message))) throw error;
+            }
+          },
         },
       );
     } catch (error) {
@@ -98,6 +94,17 @@ export default {
     } catch (error) {
       if (/already_exists/.test(String((error as Error)?.message))) event('ingest.cron_duplicate', { env: env.APP_ENV, instanceId: id });
       else throw error;
+    }
+    // Historical DOJ backfill runs as its OWN instances (separate subrequest budget). The lease inside the
+    // Workflow makes a second concurrent backfill exit immediately; a finished backfill exits too.
+    if (env.DOJ_BACKFILL_ENABLED === 'true') {
+      const bid = `backfill-${env.APP_ENV}-${new Date(controller.scheduledTime).toISOString().slice(0, 13).replace(/[-T:]/g, '')}`;
+      try {
+        await env.INGEST_WORKFLOW.create({ id: bid, params: { mode: 'backfill' } });
+        event('ingest.backfill_started', { env: env.APP_ENV, instanceId: bid });
+      } catch (error) {
+        if (!/already_exists/.test(String((error as Error)?.message))) throw error;
+      }
     }
   },
   async fetch(request: Request, env: Env): Promise<Response> {

@@ -65,6 +65,8 @@ function staticProblems(item: ImportItem, env: Env, source: SourcePolicy): strin
   const fixture = item.fixture === true;
   if (fixture && !isLocal(env)) out.push('FIXTURE_NOT_ALLOWED: fixtures can only be imported into the local environment');
   if (item.kind === 'GTA_PLAYER_EVENT') out.push('PLAYER_EVENTS_DISABLED: GTA_PLAYER_EVENT is disabled');
+  // Historical third-party dataset: development material only (see apps/ingest/src/adapters/floridaman-dataset.ts).
+  if (item.reference.provider === 'floridaman_dataset' && env.APP_ENV === 'production') out.push('PROVIDER_NOT_ALLOWED: the Florida Man dataset is staging/development only');
   for (const u of [item.reference.originalUrl, item.reference.canonicalUrl]) {
     const bad = unsafeReferenceUrl(u, { allowInvalidTld: fixture && isLocal(env) });
     if (bad) out.push(`${bad}: ${u.slice(0, 80)}`);
@@ -318,6 +320,18 @@ export async function importBatch(batch: ImportBatch, ctx: Ctx): Promise<ImportI
         details: { incidentKey: item.incidentKey, mode, gate, ai: item.ai, prefilter: item.prefilter },
       }),
     );
+    if (state === 'approved') {
+      // Policy (or local fixture) approvals are licensed approvals; record the audit row in force.
+      stmts.push(
+        db
+          .prepare(
+            `UPDATE questions SET approval_mode = 'licensed',
+               approval_log_id = (SELECT MAX(id) FROM review_log WHERE entity_type = 'question' AND entity_id = ?1 AND decision = 'import:approved')
+             WHERE id = ?1 AND quality_state = 'approved'`,
+          )
+          .bind(questionId),
+      );
+    }
     result.outcome = 'inserted';
     result.questionState = state;
     if (gate) result.gate = { decision: gate.decision, effective: gate.effective, reasons };

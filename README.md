@@ -14,7 +14,7 @@
             ▼
           Cloudflare Worker (apps/worker) ── D1 (η μόνη production βάση)
             ▲  protected /api/v1/admin/* (bearer tokens)
-Cloudflare Cron → Workflow (apps/ingest-worker): εγκεκριμένα RSS (+ GDELT fallback) + Grand Theft Wiki
+Cloudflare Cron → Workflow (apps/ingest-worker): Florida RSS με owner-approved feedAccess (+ GDELT fallback με cooldown) + Grand Theft Wiki
   → dedupe → φίλτρα → SSRF-safe link check → Workers AI (Granite → Gemma, binding, budget)
   → authenticated, idempotent import → scheduling 30 ημέρες μπροστά
 ```

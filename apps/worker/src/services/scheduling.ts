@@ -5,13 +5,17 @@
  *  - Existing days are never reshuffled or replaced. Concurrent runs are safe:
  *    day PRIMARY KEY, round number UNIQUE and question_id UNIQUE make a racing
  *    insert fail as a whole batch (D1 batches are transactions); we re-read and retry once.
- *  - Only approved questions of verified, active incidents from owner-approved
- *    sources with a verified link are eligible. Never-scheduled only.
+ *  - Eligibility is services/eligibility.ts (shared with the public endpoint): the approval in
+ *    force must be traceable to its audit row and satisfy its mode (licensed source rights, or a
+ *    fully attested factual summary), plus access rules. Never-scheduled only.
+ *  - Each item insert re-checks "still approved under the same audit row"; a revoke that lands
+ *    between planning and writing fails the whole batch (NOT NULL), which is re-planned once.
  *  - On shortage we stop at that date. Nothing is invented or reused.
  */
 import { addDays, answerPattern, cryptoRng, daysBetween, isIsoDate, planDay, runwayDays, utcDate, type PoolQuestion, type Rng, type ScheduleResponse } from '@gof/core';
 import { DAILY_SIZE, LOW_INVENTORY_DAYS } from '@gof/config';
 import { getMeta, isConstraintError, logStmt, setMetaStmt } from '../db/repo.ts';
+import { APPROVAL_LOG_JOIN, ELIGIBILITY_COLUMNS, ineligibility, type EligibilityRow } from './eligibility.ts';
 
 export type ScheduleOptions = {
   startDate: string;
@@ -21,28 +25,33 @@ export type ScheduleOptions = {
   actorId?: string;
   actorType?: 'human' | 'service' | 'system';
   rng?: Rng;
+  /** APP_ENV of the Worker (access rules differ in production). */
+  appEnv?: string;
+  /** Test seam: runs after planning, before the write (used to simulate a concurrent revoke). */
+  beforeWrite?: () => Promise<void>;
 };
 
 const POOL_SQL = (allowFixtures: boolean) => `
-  SELECT q.id, q.answer_kind AS answer, inc.category, q.difficulty, sr.publisher, inc.game
+  SELECT ${ELIGIBILITY_COLUMNS},
+         q.answer_kind AS answer, inc.category, q.difficulty, sr.publisher
     FROM questions q
     JOIN incidents inc ON inc.id = q.incident_id
     JOIN source_references sr ON sr.id = q.primary_reference_id
     JOIN sources s ON s.id = sr.source_id
+    ${APPROVAL_LOG_JOIN}
    WHERE q.quality_state = 'approved'
-     AND inc.status = 'active'
-     AND inc.verification_status = 'verified'
-     AND inc.kind IN ('FLORIDA_NEWS','GTA_CANON')
-     AND (inc.kind <> 'FLORIDA_NEWS' OR inc.location_verified = 1)
-     AND (inc.kind <> 'GTA_CANON' OR inc.game IS NOT NULL OR q.is_fixture = 1)
-     AND (q.is_fixture = 1 OR (s.license_status = 'approved' AND s.can_use_editorial_summary = 1 AND s.enabled = 1
-          AND sr.link_status IN ('ok','manual_ok')))
      AND q.is_fixture IN (${allowFixtures ? '0, 1' : '0'})
      AND NOT EXISTS (SELECT 1 FROM daily_round_items d WHERE d.question_id = q.id)
    ORDER BY q.id`;
 
-export async function eligiblePool(db: D1Database, allowFixtures = false): Promise<PoolQuestion[]> {
-  return (await db.prepare(POOL_SQL(allowFixtures)).all<PoolQuestion>()).results;
+type PoolRow = EligibilityRow & { question_id: string; answer: 'FLORIDA' | 'GTA'; category: string; difficulty: number; publisher: string | null };
+
+/** Never-scheduled questions that pass the shared eligibility rules, with the approval row in force. */
+export async function eligiblePool(db: D1Database, allowFixtures = false, appEnv?: string): Promise<(PoolQuestion & { approvalLogId: number | null })[]> {
+  const { results } = await db.prepare(POOL_SQL(allowFixtures)).all<PoolRow>();
+  return results
+    .filter((r) => ineligibility(r, { appEnv, allowFixtures }) === null)
+    .map((r) => ({ id: r.question_id, answer: r.answer, category: r.category, difficulty: r.difficulty, publisher: r.publisher, game: r.game, approvalLogId: r.approval_log_id }) as PoolQuestion & { approvalLogId: number | null });
 }
 
 export async function publishDueRounds(db: D1Database, today: string): Promise<number> {
@@ -89,11 +98,12 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions): Promise<Sche
   const size = DAILY_SIZE;
   const end = addDays(opts.startDate, opts.days - 1);
   const [pool, existing, epochMeta] = await Promise.all([
-    eligiblePool(db, opts.allowFixtures),
+    eligiblePool(db, opts.allowFixtures, opts.appEnv),
     existingDays(db, addDays(opts.startDate, -1), end),
     getMeta(db, 'schedule_epoch'),
   ]);
   const epoch = epochMeta ?? opts.startDate;
+  const approvalOf = new Map(pool.map((q) => [q.id, q.approvalLogId]));
   const used = new Set<string>();
   const out: ScheduleResponse = {
     added: [],
@@ -137,7 +147,18 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions): Promise<Sche
     const number = daysBetween(epoch, day) + 1;
     if (number < 1) throw new Error(`Cannot schedule ${day} before the schedule epoch ${epoch}`);
     stmts.push(db.prepare(`INSERT INTO daily_rounds (day, number, status, florida_count) VALUES (?, ?, 'scheduled', ?)`).bind(day, number, plan.floridaCount));
-    plan.questions.forEach((q, i) => stmts.push(db.prepare('INSERT INTO daily_round_items (day, position, question_id) VALUES (?, ?, ?)').bind(day, i + 1, q.id)));
+    // The subquery yields NULL (→ NOT NULL constraint → whole batch rolls back) if the question was
+    // revoked, re-approved or otherwise changed after the pool was read.
+    plan.questions.forEach((q, i) =>
+      stmts.push(
+        db
+          .prepare(
+            `INSERT INTO daily_round_items (day, position, question_id)
+             VALUES (?, ?, (SELECT id FROM questions WHERE id = ? AND quality_state = 'approved' AND approval_log_id IS ?))`,
+          )
+          .bind(day, i + 1, q.id, approvalOf.get(q.id) ?? null),
+      ),
+    );
     stmts.push(
       logStmt(db, {
         entityType: 'day',
@@ -153,6 +174,7 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions): Promise<Sche
   }
 
   if (!opts.dryRun && stmts.length) {
+    await opts.beforeWrite?.();
     if (!epochMeta) stmts.unshift(db.prepare(`INSERT OR IGNORE INTO app_meta (key, value) VALUES ('schedule_epoch', ?)`).bind(epoch));
     // One transaction for the whole run: all days or none.
     await db.batch(stmts);
@@ -177,9 +199,12 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions): Promise<Sche
 }
 
 /** Cron + admin entry point: keep `aheadDays` scheduled from today, then mark due days published. */
-export async function ensureSchedule(db: D1Database, opts: { now: Date; aheadDays: number; allowFixtures?: boolean; actorId?: string; actorType?: 'human' | 'service' | 'system' }) {
+export async function ensureSchedule(
+  db: D1Database,
+  opts: { now: Date; aheadDays: number; allowFixtures?: boolean; actorId?: string; actorType?: 'human' | 'service' | 'system'; appEnv?: string },
+) {
   const today = utcDate(opts.now);
-  const result = await scheduleRounds(db, { startDate: today, days: opts.aheadDays, allowFixtures: opts.allowFixtures, actorId: opts.actorId, actorType: opts.actorType });
+  const result = await scheduleRounds(db, { startDate: today, days: opts.aheadDays, allowFixtures: opts.allowFixtures, actorId: opts.actorId, actorType: opts.actorType, appEnv: opts.appEnv });
   const published = await publishDueRounds(db, today);
   await db.batch([setMetaStmt(db, 'last_schedule_run', JSON.stringify({ at: opts.now.toISOString(), added: result.added.length, shortage: result.shortageDate }))]);
   return { published, ...result };

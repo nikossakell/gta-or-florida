@@ -2,9 +2,10 @@
   "$comment": [
     "Owner-reviewed source usage policy. ONLY the project owner edits licenseStatus / can* / autoPublishAllowed, after reading each source's terms.",
     "A model, an API response or an indexer never grants rights. Unknown hosts are treated as unreviewed (fail closed).",
-    "Bump policyVersion whenever a permission changes; auto-publish benchmarks are tied to it."
+    "Bump policyVersion whenever a permission changes; auto-publish benchmarks are tied to it.",
+    "feedAccess is separate from rights: 'allowed' only permits fetching a feed for candidate METADATA (title, link, date). It never grants reuse; licenseStatus still gates every question. Set it only after reading the publisher's terms (record basis + reviewedBy + reviewedAt)."
   ],
-  "policyVersion": "2026-11-22.1",
+  "policyVersion": "2026-11-24.1",
   "sources": [
     {
       "id": "grandtheftwiki",
@@ -18,7 +19,24 @@
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
       "termsUrl": "https://www.grandtheftwiki.com/Grand_Theft_Wiki:Licensing",
-      "notes": "Evidence for documented in-game events only. Wiki text licence (see termsUrl) does not cover Rockstar's own in-game newspaper text, images or other first-party material quoted on the wiki. Owner must review before approving."
+      "notes": "Evidence for documented in-game events only; licenseStatus stays unreviewed. CC BY-SA 3.0 Unported (https://www.grandtheftwiki.com/Grand_Theft_Wiki:Licensing) applies only when wiki TEXT is reused or adapted: then a prominent link to the source page, a 'from Grand Theft Wiki' credit, a pointer to the page history (authors), the licence name/link, a modification notice and CC BY-SA licensing of the adapted text are required — that attribution UI does not exist yet. GTA questions therefore use Independent Factual Summaries (original wording, wiki page linked and named as the source). Rockstar's in-game text/images are not covered by the wiki licence and are never reused."
+    },
+    {
+      "id": "publisher:justice.gov",
+      "type": "publisher",
+      "name": "U.S. Department of Justice (U.S. Attorney's Offices, Florida)",
+      "hosts": [
+        "justice.gov"
+      ],
+      "licenseStatus": "approved",
+      "canUseEditorialSummary": true,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "termsUrl": "https://www.justice.gov/legalpolicies",
+      "notes": "Approved 2026-11-24 by the project owner under https://www.justice.gov/legalpolicies (updated 2026-07-09): information on DOJ websites is public domain 'unless otherwise indicated' and may be copied and distributed without permission. Scope: release TEXT only (title, teaser, facts). Excluded: third-party photos/graphics, DOJ seals/logos (written permission required), any implied endorsement. Only Florida U.S. Attorney's Office releases, convictions only by default; each question is still approved by a human. Original DOJ headlines are NOT displayed (canDisplayOriginalTitle false): rights would allow it, but headlines can name private individuals; the owner may enable it after a privacy review.",
+      "attribution": "U.S. Department of Justice, U.S. Attorney's Office (press release)",
+      "reviewedBy": "project-owner",
+      "reviewedAt": "2026-11-24"
     },
     {
       "id": "publisher:miamiherald.com",
@@ -44,7 +62,15 @@
       "canUseEditorialSummary": false,
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
-      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet.",
+      "feedAccess": {
+        "status": "unreviewed",
+        "basis": [
+          "https://www.tampabay.com/terms-of-service/"
+        ],
+        "aiClassification": false,
+        "findings": "Researched 2026-11-23. NOT CONFIGURED. Terms (updated July 2026) §8 bars automated harvesting/scraping except public search-engine indexing and bars using content 'in connection with any machine learning and/or artificial intelligence model or tool'; §6 personal, non-commercial use, no derivative works. Feed exists (/arc/outboundfeeds/rss/) but its use conflicts with these terms without written consent."
+      }
     },
     {
       "id": "publisher:orlandosentinel.com",
@@ -226,7 +252,15 @@
       "canUseEditorialSummary": false,
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
-      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet.",
+      "feedAccess": {
+        "status": "unreviewed",
+        "basis": [
+          "https://www.wfla.com/terms-of-use/"
+        ],
+        "aiClassification": false,
+        "findings": "Researched 2026-11-23 (not an approval). The terms page refused automated reading (HTTP 403): review it manually in a browser (Nexstar Media). robots.txt allows our user-agent on /feed/ and disallows GPTBot, ClaudeBot, anthropic-ai, CCBot, PerplexityBot, Google-Extended, Bytespider. Rights unknown."
+      }
     },
     {
       "id": "publisher:wtsp.com",
@@ -252,7 +286,15 @@
       "canUseEditorialSummary": false,
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
-      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet.",
+      "feedAccess": {
+        "status": "unreviewed",
+        "basis": [
+          "https://www.foxlocal.com/terms-of-use/index.html"
+        ],
+        "aiClassification": false,
+        "findings": "Researched 2026-11-23. NOT CONFIGURED. Fox Television Stations Terms of Use (rev. 2025-08-21) §4: no scraping or data mining, no derivative works, no AI training, no framing/deep-linking of Content; site footer: material 'may not be published, broadcast, rewritten, or redistributed'. Feed exists (/rss/category/news)."
+      }
     },
     {
       "id": "publisher:wesh.com",
@@ -278,7 +320,16 @@
       "canUseEditorialSummary": false,
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
-      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet.",
+      "feedAccess": {
+        "status": "unreviewed",
+        "basis": [
+          "https://www.clickorlando.com/rss/",
+          "https://www.grahammedia.com/terms"
+        ],
+        "aiClassification": false,
+        "findings": "Researched 2026-11-23 (not an approval). Feed is listed on the publisher's official RSS page (no usage conditions stated). Graham Media Group Terms of Use (effective 2024-07-01): access Content only through 'explicitly authorized means GMG may designate' (§3a); no modifying, republishing or derivative works without written authorization; restricts using Content to train or otherwise enhance generative AI / LLM products without attribution; commercial uses need written approval. robots.txt allows our user-agent on the feed path and disallows GPTBot, ClaudeBot, CCBot, Bytespider. No reuse rights granted."
+      }
     },
     {
       "id": "publisher:wsvn.com",
@@ -291,7 +342,15 @@
       "canUseEditorialSummary": false,
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
-      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet.",
+      "feedAccess": {
+        "status": "unreviewed",
+        "basis": [
+          "https://wsvn.com/terms-of-service/"
+        ],
+        "aiClassification": false,
+        "findings": "Researched 2026-11-23 (not an approval). Feed linked from the site footer; terms mention RSS as a site feature. Terms (undated): prohibits using 'any robot, spider, other automatic device, or manual process to monitor or copy our web pages' without prior express consent (consent deemed only for standard search engines); personal, non-commercial use; no copying, modifying or republishing without permission (webmaster@wsvn.com); plain hyperlinks allowed without implied sponsorship; AP material may not be rewritten. AI not addressed. robots.txt allows our user-agent; no AI-crawler groups. Written permission recommended before enabling."
+      }
     },
     {
       "id": "publisher:local10.com",
@@ -304,7 +363,12 @@
       "canUseEditorialSummary": false,
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
-      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet.",
+      "feedAccess": {
+        "status": "unreviewed",
+        "aiClassification": false,
+        "findings": "Researched 2026-11-23. NOT CONFIGURED. Terms page could not be located automatically (WPLG is not listed among Graham Media Group's covered hubs); the main feed is ~600 KB, too heavy for Workers Free. robots.txt allows our user-agent and disallows GPTBot, ClaudeBot, Google-Extended, CCBot, Bytespider."
+      }
     },
     {
       "id": "publisher:nbcmiami.com",
@@ -317,7 +381,16 @@
       "canUseEditorialSummary": false,
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
-      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet.",
+      "feedAccess": {
+        "status": "unreviewed",
+        "basis": [
+          "https://www.nbcuniversal.com/terms",
+          "https://www.nbcuniversal.com/terms/prohibited-actions"
+        ],
+        "aiClassification": false,
+        "findings": "Researched 2026-11-23. NOT CONFIGURED. NBCUniversal Terms (updated 2024-12-24) + Prohibited Actions §K: no robots, spiders, crawlers or scripts to scrape, data mine or aggregate Content; §L no derivative works or commercial use; no use of Content to train/develop AI. Feed exists (/rss/)."
+      }
     },
     {
       "id": "publisher:wpbf.com",
@@ -343,7 +416,16 @@
       "canUseEditorialSummary": false,
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
-      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet.",
+      "feedAccess": {
+        "status": "unreviewed",
+        "basis": [
+          "https://www.news4jax.com/rss/",
+          "https://www.grahammedia.com/terms"
+        ],
+        "aiClassification": false,
+        "findings": "Researched 2026-11-23 (not an approval). Feed is listed on the publisher's official RSS page (no usage conditions stated). Same Graham Media Group Terms of Use as WKMG: designated means of access only, no derivative works or republishing without written authorization, generative-AI/LLM restriction, commercial use needs approval. robots.txt allows our user-agent on the feed path and disallows GPTBot, ClaudeBot, CCBot, Bytespider. No reuse rights granted."
+      }
     },
     {
       "id": "publisher:actionnewsjax.com",
@@ -382,7 +464,15 @@
       "canUseEditorialSummary": false,
       "canDisplayOriginalTitle": false,
       "autoPublishAllowed": false,
-      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet."
+      "notes": "Florida-based outlet (discovery hint). Terms not reviewed yet.",
+      "feedAccess": {
+        "status": "unreviewed",
+        "basis": [
+          "https://keysweekly.com/privacy-policy/"
+        ],
+        "aiClassification": false,
+        "findings": "Researched 2026-11-23 (not an approval). No terms-of-use page found (/terms-of-use/ and /terms/ return 404); the privacy policy (2023-11-29, The Weekly Media Group, LLC) contains no use terms. robots.txt has no applicable restrictions. Standard WordPress feed. Rights unknown: ask the publisher."
+      }
     },
     {
       "id": "publisher:theonion.com",

@@ -201,6 +201,73 @@ npx wrangler deploy --env staging
 
 **Τοπικά:** `npm run db:migrate:local && npm run dev:ingest` (και οι δύο Workers στο workerd, local D1, mock AI)· `apps/ingest-worker/.dev.vars` με `INGESTION_IMPORT_TOKEN` (ίδιο με `apps/worker/.dev.vars`) και `INGEST_ENABLED=true`· trigger: `curl "http://localhost:8788/cdn-cgi/local/scheduled?cron=17+5,17+*+*+*"`.
 
+## 8c. Florida RSS (RSS-first, GDELT μόνο fallback)
+
+**Δύο ξεχωριστές αποφάσεις ανά πηγή** στο `packages/config/sources.policy.json`:
+
+| Πεδίο | Τι επιτρέπει | Ποιος/πότε |
+|---|---|---|
+| `feedAccess.status` (`unreviewed` / `allowed` / `denied`) | **Μόνο** fetch του feed για μεταδεδομένα (τίτλος, link, ημερομηνία, guid). Κανένα κείμενο άρθρου, καμία δημοσίευση. | Ο owner, αφού διαβάσει τους όρους· `allowed` απαιτεί `basis` (επίσημο URL), `reviewedBy`, `reviewedAt` (το `npm run validate` το ελέγχει). |
+| `feedAccess.aiClassification` | Αν οι τίτλοι αυτής της πηγής στέλνονται στο Workers AI. Default `false` → μόνο ανθρώπινη αξιολόγηση. | Ο owner (πολλοί όροι απαγορεύουν χρήση σε AI). |
+| `licenseStatus` + `can*` | Επαναχρησιμοποίηση/δημοσίευση. **Αμετάβλητο gate** για κάθε ερώτηση. | Ο owner (§9). |
+
+Ρυθμισμένα feeds (`data/sources.json → rss`, επαληθευμένα 2026-11-23, όλα **ανενεργά** μέχρι `feedAccess: allowed`): WKMG (Orlando), WJXT (Jacksonville), WSVN (Miami), WFLA (Tampa Bay), Keys Weekly (Keys). Τα ευρήματα όρων ανά publisher είναι στο `feedAccess.findings`. Tampa Bay Times, FOX 13, NBC 6 **δεν** ρυθμίστηκαν: οι όροι τους απαγορεύουν ρητά αυτοματοποιημένη συλλογή/aggregation.
+
+**Ανά run, ανά feed (ένα βήμα Workflow):** robots.txt (RFC 9309, unreachable → δεν γίνεται fetch) → conditional GET (ETag/Last-Modified, `cache:<feed>` checkpoint) → μόνο items με link στο ίδιο domain του publisher → φίλτρα → dedupe → import ως candidates. Ένα feed που αποτυγχάνει δεν σταματά τα άλλα.
+
+**GDELT:** τρέχει μόνο αν τα feeds δώσουν < `GDELT_MIN_RSS_ITEMS`. Σε 429: κανένα retry, κανένα επόμενο query, και **cooldown 6 h → 12 h → 24 h → 48 h** (checkpoints `gdelt/strikes`, `gdelt/cooldownUntil`), που αποθηκεύεται ακόμα και σε αποτυχημένο ή dry run· μετά από επιτυχία μηδενίζεται.
+
+**Ενεργοποίηση ενός feed (απόφαση owner):**
+
+```jsonc
+// packages/config/sources.policy.json → η πηγή, π.χ. "publisher:clickorlando.com"
+"feedAccess": {
+  "status": "allowed",
+  "basis": ["https://www.clickorlando.com/rss/", "https://www.grahammedia.com/terms"],
+  "aiClassification": false,
+  "reviewedBy": "<όνομα>",
+  "reviewedAt": "YYYY-MM-DD",
+  "findings": "…"
+}
+```
+
+Μετά: `npm run ci` → deploy του ingestion Worker (§8b). Ο API Worker **δεν** χρειάζεται redeploy (το feedAccess το διαβάζει μόνο το ingestion).
+
+## 8d. Florida πηγές: DOJ πρώτα, ιστορικό dataset μόνο στο staging
+
+| Πηγή | Δικαιώματα | Τι κάνει ο κώδικας | Απόδοση (μετρημένη 2026-11-23) |
+|---|---|---|---|
+| **DOJ — U.S. Attorney's Offices SD/MD/ND Florida** (`DOJ_ENABLED`) | Δημόσιος τομέας κατά https://www.justice.gov/legalpolicies (εκτός φωτογραφιών τρίτων, σφραγίδων/λογοτύπων). Πηγή `publisher:justice.gov` = **unreviewed** μέχρι να την εγκρίνει ο owner. | API `justice.gov/api/v1/press_releases.json` (newest-first, ≤ 1 req/s), μόνο URLs `/usao-[smn]dfl/pr/`. Απορρίπτει σοβαρά εγκλήματα/ευάλωτα θύματα, routine ανακοινώσεις και (default) **κατηγορίες χωρίς καταδίκη** (`ALLEGATION_ONLY`). Σημειώνει το στάδιο της υπόθεσης στο review. | ~3,8 Florida releases/ημέρα → ~0,6–1/ημέρα περνούν (μόνο καταδίκες). |
+| **Florida Man API dataset** (`FM_DATASET_ENABLED`, **μόνο staging**) | Repo MIT, αλλά dataset «για personal, educational, non-commercial use» και οι τίτλοι ανήκουν στους publishers. **Ποτέ** publishable χωρίς έγκριση του αντίστοιχου publisher. | Ένα αρχείο ημέρας (~18 KB) ανά βήμα, cursor `nextDay`, κρατά το αρχικό URL + provenance, χωρίς AI. Αρνείται production σε 3 επίπεδα (Workflow, importer, `npm run validate`). | 10.000 τίτλοι (2021-04 → 2026-04) → ~5.900 νέοι candidates μετά τα φίλτρα, ~82% ζωντανά links. ~15–30 ανά ημέρα-αρχείο. |
+| Florida RSS (§8c) | Όροι publishers δεν δίνουν δικαιώματα | Ανενεργά μέχρι `feedAccess: allowed` | 0 |
+| GDELT | Μόνο discovery index | Fallback με cooldown μετά από 429 | 0 (429) |
+| r/FloridaMan, news search | Δεν επαληθεύτηκαν οι όροι 2026 (οι σελίδες αρνήθηκαν αυτόματη ανάγνωση) | **Δεν υλοποιήθηκε** | — |
+
+**Για να δημοσιευτούν DOJ ερωτήσεις** (απόφαση owner): στο `sources.policy.json`, `publisher:justice.gov` → `licenseStatus: "approved"`, `canUseEditorialSummary: true` (προαιρετικά `canDisplayOriginalTitle: true`), `reviewedBy`, `reviewedAt` → deploy API + ingestion, `npm run admin -- sources:sync`. Κάθε ερώτηση εγκρίνεται και πάλι από άνθρωπο.
+
+## 8e. DOJ backfill + «unusualness» (για ενδιαφέρουσες Florida ερωτήσεις)
+
+- **Unusualness score** (`apps/ingest/src/filters.ts`, ντετερμινιστικό): +2 ανά ομάδα «παράξενων» ενδείξεων (ζώα, παράδοξα αντικείμενα/οχήματα, απάτες-μεταμφιέσεις, κρύψιμο σε απίθανα σημεία, wildlife crime, «strange»), −1 ανά ομάδα ρουτίνας (τυπική οικονομική απάτη, βραβεία, διορισμοί, διακανονισμοί). Γράφεται σε κάθε Florida candidate (`Unusualness: N (…)`) για το review. Για DOJ: κάτω από `DOJ_MIN_UNUSUAL` (default 2) → `NOT_UNUSUAL` (καταγράφεται ως rejected, δεν γεμίζει την ουρά). Μπορεί μόνο να απορρίψει, ποτέ να εγκρίνει· οι κανόνες ασφαλείας (βία, θάνατοι, σεξουαλικά, ανήλικοι, ευάλωτα θύματα) υπερισχύουν πάντα.
+- **Backfill** (`DOJ_BACKFILL_ENABLED`, staging): τρέχει σε **ξεχωριστά Workflow instances** (`{"mode":"backfill"}`), όχι μέσα στα κανονικά runs. Μία σελίδα DOJ ανά βήμα, cursor `doj/backfillPage`, lease `doj/backfillLease` (ένα instance τη φορά, λήγει μόνο του σε 60′), και κάθε instance που τελειώνει με σελίδες που απομένουν ξεκινά τον διάδοχο (`backfill-<env>-p<cursor>`). Αποτυχία ή dry run δεν μετακινεί ποτέ τον cursor. Το cron το ξαναξεκινά αν σταματήσει· όταν φτάσει τις 365 ημέρες γίνεται `done`.
+- **Subrequests ανά instance (Workers Free: 50 ανά invocation, τα steps δεν τα μηδενίζουν, οι Service Binding κλήσεις μετράνε):** κάθε βήμα κρατά πρώτα το worst case του (redirects, retries, link checks, AI, API) από `SUBREQUEST_BUDGET` (45)· το «tail» (dedupe, import, checkpoints, inventory) μένει πάντα δεσμευμένο. Ό,τι δεν χωρά αναβάλλεται (`deferred`) χωρίς να προχωρήσει cursor. Κανένα βήμα με αιτήματα δεν κάνει retry· «Too many subrequests» = NonRetryable. `wrangler workflows instances describe … latest` → `subrequests.reserved/actual/deferred`.
+- **Μέτρηση 12 μηνών (2025-11-24 → 2026-11-23, 407 σελίδες, 20.350 releases):** 1.398 από τα τρία Florida USAO → 1.032 σοβαρά/ευάλωτα θύματα, 386 κατηγορίες χωρίς καταδίκη, 101 μετανάστευση/εκλογές, 16 routine → **9 candidates** με `DOJ_MIN_UNUSUAL=2` (15 με κατηγορίες)· ~5 πραγματικά «παιχνιδιάρικα». Το DOJ είναι νομικά καθαρό αλλά δεν αρκεί για 30 ημέρες Florida.
+- **Coast Guard / FWC:** δεν υλοποιήθηκαν. news.uscg.mil και uscg.mil αρνούνται αυτόματη πρόσβαση (Akamai «Access Denied», ακόμα και robots.txt)· το DVIDS feed υπάρχει αλλά το robots.txt επιστρέφει 502 → fail closed· το myfwc.com απαντά με Cloudflare challenge (403). Οι όροι επαναχρησιμοποίησης δεν μπορούσαν να επαληθευτούν, και το κρατικό περιεχόμενο της Florida δεν θεωρείται αυτόματα public domain.
+
+## 8f. Δύο τρόποι έγκρισης: licensed και Independent Factual Summary
+
+| | **licensed** (default, αμετάβλητο) | **factual_summary** (`--factual-summary`) |
+|---|---|---|
+| Τι δημοσιεύεται | Editorial summary με δικαιώματα της πηγής (π.χ. DOJ public domain) | Δικά σας λόγια για **ανεξάρτητα επαληθευμένα γεγονότα** + link· καμία επαναχρησιμοποίηση της διατύπωσης του publisher |
+| Gate δικαιωμάτων | `licenseStatus: approved` + `canUseEditorialSummary` | Δεν απαιτεί έγκριση δικαιωμάτων· **ποτέ** για `blocked` πηγές, items από μη επιτρεπτό feed (`UNAUTHORIZED_COLLECTION`), ή dataset σε production |
+| Ανθρώπινη επαλήθευση | link check, location/date/publisher | + δηλώσεις: `--attest-human-written --attest-incident --attest-claims --attest-privacy`, `--verified-date`, `--verified-location` (Florida για news), `--evidence-url` (τουλάχιστον ένα στην ίδια την πηγή) |
+| Αντιγραφή | exact-match τίτλου | + near-copy (ομοιότητα ≥ 0,6) και ≥ 5 συνεχόμενες κοινές λέξεις σε τίτλο/εξήγηση — δικλίδες, όχι απόδειξη πρωτοτυπίας |
+| Εμφάνιση | ο αρχικός τίτλος μόνο με `canDisplayOriginalTitle` | ποτέ αρχικός τίτλος/κείμενο/εικόνες χωρίς δικαιώματα· link + όνομα πηγής πάντα |
+| Audit | `review_log: approved` | `review_log: approved:factual_summary` με όλες τις δηλώσεις και τα evidence URLs |
+
+AI: απενεργοποιημένο για κάθε item από publisher με `feedAccess.aiClassification: false` (ανεξάρτητα από το κανάλι: RSS, GDELT, manual) και για το dataset.
+
+**Πιλοτικός γύρος (staging, 3 Florida DOJ + 2 GTA):** βλ. την απάντηση της 2026-11-24 στο ιστορικό· σύνοψη: deploy API + ingestion → `sources:sync` → DOJ backfill (χειροκίνητα runs) → έγκριση 3 DOJ (licensed) + 2 GTA (factual_summary) με δικά σας κείμενα → `schedule --days 1` → `GET /api/challenge/today`.
+
 ## 9. Editorial review (ο κύκλος που γεμίζει το παιχνίδι)
 
 ```bash
@@ -232,6 +299,10 @@ npm run admin -- questions:approve --id <q> --play-title "…" --explanation "�
 ```
 
 Το CLI κάνει πρώτα SSRF-safe έλεγχο του link από τον υπολογιστή σας. Ο Worker αρνείται (και τα λέει όλα μαζί) αν: η πηγή δεν είναι εγκεκριμένη, ο τίτλος δίνει την απάντηση ή είναι ο αυτούσιος τίτλος, λείπει explanation/τοποθεσία/ημερομηνία/game, το game διαφέρει από αυτό της σελίδας του wiki, υπάρχει πιθανό duplicate (`--not-duplicate` αφού ελέγξετε, ή `incidents:merge`). Επίσης: `questions:reject`, `questions:edit`, `incidents:merge|unmerge` (αναστρέψιμο, με audit log).
+
+Λάθος έγκριση (π.χ. placeholder κείμενο) που **δεν** έχει μπει ακόμη σε γύρο: `npm run admin -- questions:revoke --id <q> --reason "…"` (μόνο admin token). Η ερώτηση γυρίζει σε `candidate`, το explanation και το «reviewed» του τίτλου μηδενίζονται, η πηγή/προέλευση μένουν ίδιες και το παλιό κείμενο κρατιέται στο audit log (`approval_revoked`). Μετά χρειάζεται νέο `questions:approve` με νέο κείμενο και νέες δηλώσεις (`--attest-*`). Placeholder/γενικά κείμενα απορρίπτονται πάντα κατά την έγκριση. Για ερώτηση που έχει ήδη προγραμματιστεί: `withdraw`.
+
+Προγραμματισμός και δημόσιο endpoint ελέγχουν **την ίδια** επιλεξιμότητα (`apps/worker/src/services/eligibility.ts`): κάθε εγκεκριμένη ερώτηση έχει `approval_mode` και `approval_log_id` (η εγγραφή audit της έγκρισης που ισχύει, migration `0002`). `licensed` → οι ίδιοι κανόνες δικαιωμάτων πηγής όπως πριν. `factual_summary` → ανθρώπινη έγκριση με πλήρεις δηλώσεις, χωρίς μεταγενέστερη ανάκληση, και χωρίς blocked πηγή / μη επιτρεπτό feed / dataset σε production. Πριν το deploy του API Worker: `npm run db:migrate:staging -w @gof/worker`.
 
 **Απόσυρση:** `npm run admin -- withdraw --question <q> --reason "…"` → ο σημερινός/παλιός γύρος που την περιέχει γίνεται `ROUND_WITHDRAWN` για όλους· οι μελλοντικοί γύροι που την περιέχουν σβήνονται και ξαναγεμίζουν από το scheduler. `withdraw --day YYYY-MM-DD` αποσύρει ολόκληρη ημέρα. Ό,τι γίνεται καταγράφεται στο `review_log`.
 

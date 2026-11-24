@@ -22,7 +22,7 @@ import type { WorkerClient } from './import.ts';
 
 export type Discovered = {
   kind: 'FLORIDA_NEWS' | 'GTA_CANON';
-  provider: 'gdelt' | 'rss' | 'grandtheftwiki' | 'manual';
+  provider: 'gdelt' | 'rss' | 'grandtheftwiki' | 'manual' | 'doj' | 'floridaman_dataset';
   providerKey: string | null;
   title: string;
   originalUrl: string;
@@ -39,6 +39,8 @@ export type Discovered = {
   floridaEvidence: string | null;
   notes: string | null;
   prefilter: FilterResult;
+  /** false: the source's terms were reviewed for metadata only — no Workers AI, human review decides. */
+  aiAllowed?: boolean;
 };
 
 export type PipelineStats = {
@@ -175,8 +177,18 @@ export function planCandidates(
 
 /** Items that may become questions and therefore get a link check (in plan order). */
 export const needsLinkCheck = (p: Planned) => p.d.prefilter.decision === 'candidate';
-/** Items that get AI: new, prefilter-passing, link working or unchecked. */
-export const needsAi = (p: Planned) => !p.attachTo && p.d.prefilter.decision === 'candidate' && p.link?.status !== 'broken';
+/** Items that get AI: new, prefilter-passing, link working or unchecked, and the source permits AI processing. */
+export const needsAi = (p: Planned) => !p.attachTo && p.d.prefilter.decision === 'candidate' && p.link?.status !== 'broken' && aiPermitted(p.d);
+
+/**
+ * AI processing is a separate permission from reading: off when the record says so (feed reviewed for
+ * metadata only, third-party dataset) or when the owner's research found the publisher's terms restrict AI
+ * (`feedAccess.aiClassification: false`) — whichever channel discovered the item (RSS, GDELT, manual).
+ */
+export function aiPermitted(d: Discovered): boolean {
+  if (d.aiAllowed === false) return false;
+  return sourceFor(d).feedAccess?.aiClassification !== false;
+}
 
 /** Phase 4: link check one planned item (mutates it). */
 export async function linkCheckOne(p: Planned, checkLink: (url: string) => Promise<LinkCheck>, stats: PipelineStats): Promise<void> {

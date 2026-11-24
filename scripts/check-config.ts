@@ -53,6 +53,10 @@ for (const [env, cfg] of Object.entries(ingest.env)) {
     wfNames.push(w.name);
   }
   if (env !== 'local' && vars.AI_PROVIDER === 'mock') warnings.push(`ingest wrangler env ${env}: AI_PROVIDER=mock`);
+  // Workers Free allows 50 subrequests per invocation (Service Binding calls included): the plan must stay below.
+  if (env !== 'local' && vars.SUBREQUEST_BUDGET && Number(vars.SUBREQUEST_BUDGET) > 50) warnings.push(`ingest wrangler env ${env}: SUBREQUEST_BUDGET=${vars.SUBREQUEST_BUDGET} exceeds the Workers Free limit of 50 (only valid on Workers Paid)`);
+  if (env !== 'local' && !vars.SUBREQUEST_BUDGET) problems.push(`ingest wrangler env ${env}: SUBREQUEST_BUDGET must be set explicitly`);
+  if (env === 'production' && vars.FM_DATASET_ENABLED === 'true') problems.push('ingest wrangler env production: FM_DATASET_ENABLED must not be true (staging/development-only dataset)');
 }
 if (new Set(wfNames).size !== wfNames.length) problems.push('ingest wrangler envs share a Workflow name');
 // Workers Free: 5 Cron Triggers per account (API + ingestion, staging + production).
@@ -60,6 +64,11 @@ const cronCount = [wrangler.env, ingest.env]
   .flatMap((envs) => Object.entries(envs).filter(([env]) => env !== 'local').map(([, cfg]) => ((cfg as IngestEnv).triggers?.crons ?? []).length))
   .reduce((a, b) => a + b, 0);
 if (cronCount > 5) warnings.push(`${cronCount} Cron Triggers across deployed envs; Workers Free allows 5 per account`);
+
+// 2c. checkpoints per run must fit one import batch (importBatchSchema: max 20)
+const discovery = JSON.parse(readFileSync(resolve(ROOT, 'data/sources.json'), 'utf8')) as { rss?: unknown[]; grandTheftWiki?: { categories?: unknown[] } };
+const maxCheckpoints = (discovery.grandTheftWiki?.categories?.length ?? 0) * 2 + 1 /* wiki rotation */ + 3 /* gdelt cursor + cooldown guard */ + (discovery.rss?.length ?? 0) /* one cache key per feed */ + 1 /* dataset day cursor */ + 1 /* DOJ backfill cursor */;
+if (maxCheckpoints > 20) problems.push(`up to ${maxCheckpoints} checkpoints per run; one import batch carries at most 20 (fewer feeds/categories, or raise the contract limit)`);
 
 // 3. workflows
 const wfDir = resolve(ROOT, '.github/workflows');
@@ -97,7 +106,7 @@ const scan = (dir: string) => {
 };
 for (const d of ['apps/ingest/src', 'apps/web/src', 'scripts']) scan(resolve(ROOT, d));
 for (const line of readFileSync(resolve(ROOT, 'apps/worker/src/env.ts'), 'utf8').matchAll(/^\s+([A-Z][A-Z0-9_]+)\??:/gm)) used.add(line[1]!);
-for (const line of readFileSync(resolve(ROOT, 'apps/ingest-worker/src/index.ts'), 'utf8').matchAll(/^\s+([A-Z][A-Z0-9_]+)\??:/gm)) used.add(line[1]!);
+for (const line of readFileSync(resolve(ROOT, 'apps/ingest-worker/src/env.ts'), 'utf8').matchAll(/^\s+([A-Z][A-Z0-9_]+)\??:/gm)) used.add(line[1]!);
 for (const m of readFileSync(resolve(ROOT, 'apps/ingest-worker/src/limits.ts'), 'utf8').matchAll(/\| '([A-Z][A-Z0-9_]+)'/g)) used.add(m[1]!);
 const IGNORED = new Set(['GITHUB_ACTIONS', 'GITHUB_STEP_SUMMARY', 'DB', 'RATE_LIMITER', 'BASE_PATH', 'NODE_ENV', 'API', 'AI', 'INGEST_WORKFLOW']);
 for (const name of used) if (!IGNORED.has(name) && !new RegExp(`\\b${name}\\b`).test(example)) problems.push(`.env.example does not document ${name}`);

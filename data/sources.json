@@ -5,7 +5,8 @@
     "GDELT DOC 2.0 returns news metadata (title, URL, domain, date), not licensed article text. seendate is GDELT's discovery time, not the publication date.",
     "Every query is combined with the operators in gdelt.queryOperators. Boolean OR blocks cannot be nested (GDELT docs).",
     "grandTheftWiki.categories were verified to exist via the MediaWiki API on 2026-11-22. Add a category only after checking it on the live wiki.",
-    "Add an RSS feed only after confirming its URL, current availability, robots/terms and reuse conditions."
+    "Add an RSS feed only after confirming its URL, current availability, robots/terms and reuse conditions.",
+    "rss: verified live 2026-11-23 (HTTP 200, valid RSS, links on the publisher's own domain, robots.txt allows our user-agent). A feed is fetched only when its source has feedAccess 'allowed' (or approved rights) in packages/config/sources.policy.json — all are 'unreviewed', so none run yet. Findings per publisher are recorded there."
   ],
   "gdelt": {
     "endpoint": "https://api.gdeltproject.org/api/v2/doc/doc",
@@ -176,5 +177,36 @@
     "osceola",
     "seminole county"
   ],
-  "rss": []
+  "rss": [
+    {
+      "id": "wkmg-news",
+      "sourceId": "publisher:clickorlando.com",
+      "region": "Central Florida (Orlando)",
+      "url": "https://www.clickorlando.com/arc/outboundfeeds/rss/category/news/?outputType=xml&size=10"
+    },
+    {
+      "id": "wjxt-local",
+      "sourceId": "publisher:news4jax.com",
+      "region": "Northeast Florida (Jacksonville)",
+      "url": "https://www.news4jax.com/arc/outboundfeeds/rss/category/news/local/?outputType=xml&size=10"
+    },
+    {
+      "id": "wsvn-news",
+      "sourceId": "publisher:wsvn.com",
+      "region": "South Florida (Miami)",
+      "url": "https://wsvn.com/feed/"
+    },
+    {
+      "id": "wfla-news",
+      "sourceId": "publisher:wfla.com",
+      "region": "Tampa Bay",
+      "url": "https://www.wfla.com/feed/"
+    },
+    {
+      "id": "keysweekly-news",
+      "sourceId": "publisher:keysweekly.com",
+      "region": "Florida Keys",
+      "url": "https://keysweekly.com/feed/"
+    }
+  ]
 }
