@@ -142,6 +142,7 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
     added: [],
     kept,
     shortageDate: plan.ok ? null : plan.failure.date,
+    gaps: [],
     error: plan.ok
       ? null
       : {
@@ -169,6 +170,8 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
   for (const day of toWrite) {
     const number = daysBetween(epoch, day.date) + 1;
     if (number < 1) throw new Error(`Cannot schedule ${day.date} before the schedule epoch ${epoch}`);
+    out.added.push({ date: day.date, floridaCount: day.floridaCount });
+    if (opts.dryRun) continue; // a dry run reports the plan; statements are only built for a real write
     stmts.push(db.prepare(`INSERT INTO daily_rounds (day, number, status, florida_count) VALUES (?, ?, 'scheduled', ?)`).bind(day.date, number, day.floridaCount));
     // The subquery yields NULL (→ NOT NULL constraint → whole batch rolls back) if the question was
     // revoked, re-approved, marked as a spoiler or otherwise changed after the pool was read.
@@ -192,7 +195,6 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
         details: { questionIds: day.questions.map((q) => q.id), eventIds: day.questions.map((q) => q.eventId), floridaCount: day.floridaCount, cooldownDays: cooldown, resampled: day.resampled },
       }),
     );
-    out.added.push({ date: day.date, floridaCount: day.floridaCount });
   }
 
   if (!opts.dryRun && stmts.length) {
@@ -211,6 +213,13 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
   let runway = 0;
   while (runway < opts.days && covered.has(addDays(opts.startDate, runway))) runway++;
   out.inventory.runwayDays = runway;
+  // Holes: a missing day before a scheduled one (e.g. a future day dropped by a withdrawal that the
+  // cooldown does not allow to refill). Days after the last scheduled day are a shortage, not a hole.
+  const lastCovered = [...covered].sort().at(-1);
+  for (let i = 0; lastCovered && addDays(opts.startDate, i) < lastCovered; i++) {
+    const d = addDays(opts.startDate, i);
+    if (!covered.has(d)) out.gaps.push(d);
+  }
   const aheadRow = await db
     .prepare(`SELECT COUNT(*) AS n FROM daily_rounds WHERE day >= ? AND status <> 'withdrawn'`)
     .bind(opts.startDate)
@@ -218,6 +227,13 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
   out.inventory.scheduledAhead = (aheadRow?.n ?? 0) + (opts.dryRun ? planned.length : 0);
 
   if (!plan.ok) out.warnings.push({ code: 'shortage', date: plan.failure.date, message: out.error!.message });
+  if (out.gaps.length) {
+    out.warnings.push({
+      code: 'schedule_gap',
+      date: out.gaps[0],
+      message: `No round on ${out.gaps.join(', ')} although later days are scheduled; players will see "not ready" on ${out.gaps.length === 1 ? 'that day' : 'those days'}. Approve questions about other events or use a shorter cooldown, then re-run.`,
+    });
+  }
   if (runway < Math.min(LOW_INVENTORY_DAYS, opts.days)) {
     out.warnings.push({
       code: 'low_inventory',
@@ -268,6 +284,21 @@ export async function ensureSchedule(
     rng: opts.rng,
   });
   const published = await publishDueRounds(db, today);
-  await db.batch([setMetaStmt(db, 'last_schedule_run', JSON.stringify({ at: opts.now.toISOString(), added: result.added.length, shortage: result.shortageDate }))]);
-  return { published, ...result };
+  const todayRow = await db.prepare('SELECT status FROM daily_rounds WHERE day = ?').bind(today).first<{ status: string }>();
+  const todayPlayable = !!todayRow && todayRow.status !== 'withdrawn';
+  if (!todayPlayable) {
+    result.warnings.unshift({
+      code: 'no_round_today',
+      date: today,
+      message: todayRow ? `Today's round (${today}) is withdrawn.` : `No round could be scheduled for today (${today}); players see "not ready". ${result.error?.message ?? ''}`.trim(),
+    });
+  }
+  await db.batch([
+    setMetaStmt(
+      db,
+      'last_schedule_run',
+      JSON.stringify({ at: opts.now.toISOString(), ok: result.ok, added: result.added.length, shortage: result.shortageDate, gaps: result.gaps, todayPlayable, runwayDays: result.inventory.runwayDays }),
+    ),
+  ]);
+  return { published, todayPlayable, ...result };
 }

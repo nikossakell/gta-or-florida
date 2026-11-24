@@ -535,6 +535,13 @@ export async function collectStats(db: D1Database, now: Date) {
   const warnings: string[] = [];
   if (!todayRow || todayRow.status === 'withdrawn') warnings.push(`No playable round for today (${today}).`);
   if (ahead < 14) warnings.push(`Only ${ahead} round(s) scheduled from today (target 30).`);
+  // Holes in the next 30 days: a missing day before a scheduled one.
+  const upcoming = await db.prepare(`SELECT day FROM daily_rounds WHERE day BETWEEN ? AND ?`).bind(today, addDays(today, 29)).all<{ day: string }>();
+  const have = new Set(upcoming.results.map((r) => r.day));
+  const last = upcoming.results.map((r) => r.day).sort().at(-1);
+  const holes: string[] = [];
+  for (let i = 1; last && addDays(today, i) < last; i++) if (!have.has(addDays(today, i))) holes.push(addDays(today, i));
+  if (holes.length) warnings.push(`Missing round(s) on ${holes.join(', ')} between scheduled days; run \`npm run admin -- schedule:top-up\` after approving more questions.`);
   const usageRow = usage!.results[0] as { neurons: number };
   if (usageRow.neurons > 8_000) warnings.push(`AI usage in the last 24h is ~${Math.round(usageRow.neurons)} neurons (free allocation 10,000/day).`);
   return {

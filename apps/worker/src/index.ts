@@ -64,7 +64,12 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       ensureSchedule(env.DB, { now: new Date(), ...scheduleVars(env), allowFixtures: isLocal(env), actorId: 'cron', actorType: 'system', appEnv: env.APP_ENV }).then(
-        (r) => console.log(`[cron] published ${r.published}, added ${r.added.length}, shortage ${r.shortageDate ?? 'none'}`),
+        (r) => {
+          const line = `[cron] published ${r.published}, added ${r.added.length}, runway ${r.inventory.runwayDays}d, shortage ${r.shortageDate ?? 'none'}, gaps ${r.gaps.join(',') || 'none'}, today ${r.todayPlayable ? 'ok' : 'MISSING'}`;
+          // Incomplete schedules are errors in the Workers logs, not just info lines.
+          if (!r.todayPlayable || r.gaps.length || !r.ok) console.error(line, r.warnings.map((w) => w.code).join(','));
+          else console.log(line);
+        },
         (e) => console.error('[cron] schedule failed', (e as Error)?.message ?? e),
       ),
     );

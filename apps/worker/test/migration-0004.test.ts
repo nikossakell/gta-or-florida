@@ -66,6 +66,36 @@ describe('migration 0004 (question bank scheduling)', () => {
     await expect(db.prepare(`INSERT INTO daily_round_items (day, position, question_id) VALUES ('2027-01-09', 1, 'q1')`).run()).rejects.toThrow(/FOREIGN KEY/);
     const fk = await db.prepare('PRAGMA foreign_key_check').all();
     expect(fk.results).toEqual([]);
+    expect((await db.prepare('PRAGMA quick_check').first<{ quick_check: string }>())!.quick_check).toBe('ok'); // D1 does not authorize integrity_check
+
+    // Indexes: the rebuilt tables keep (or replace) every index the old ones had.
+    const indexes = (t: string) => db.prepare(`SELECT name, "unique", origin FROM pragma_index_list(?) ORDER BY name`).bind(t).all<{ name: string; unique: number; origin: string }>();
+    expect((await indexes('daily_rounds')).results.map((i) => [i.origin, i.unique, i.name.startsWith('sqlite_') ? 'auto' : i.name]).sort()).toEqual(
+      [['c', 0, 'idx_rounds_status'], ['pk', 1, 'auto'], ['u', 1, 'auto']].sort(), // status index, day PK, UNIQUE(number)
+    );
+    expect((await indexes('daily_round_items')).results.map((i) => [i.origin, i.unique, i.name.startsWith('sqlite_') ? 'auto' : i.name]).sort()).toEqual(
+      [['c', 0, 'idx_round_items_question'], ['pk', 1, 'auto'], ['u', 1, 'auto']].sort(), // question lookups, (day, position) PK, UNIQUE(day, question_id)
+    );
+    const plan = async (sql: string, ...args: unknown[]) => (await db.prepare(`EXPLAIN QUERY PLAN ${sql}`).bind(...args).all<{ detail: string }>()).results.map((r) => r.detail).join(' | ');
+    expect(await plan(`SELECT i.day, i.question_id FROM daily_round_items i WHERE i.day BETWEEN ? AND ?`, '2026-11-01', '2026-12-31')).toMatch(/USING (INDEX|PRIMARY KEY|COVERING INDEX) .*day/i);
+    expect(await plan(`SELECT day FROM daily_round_items WHERE question_id = ?`, 'q1')).toMatch(/idx_round_items_question|sqlite_autoindex/);
+    expect(await plan(`SELECT question_id, COUNT(*) FROM daily_round_items GROUP BY question_id`)).toMatch(/idx_round_items_question/);
+    expect(await plan(`SELECT * FROM daily_rounds WHERE day = ?`, '2026-11-20')).toMatch(/USING INDEX sqlite_autoindex_daily_rounds|PRIMARY KEY/);
+
+    // The Worker code before this branch still works on the new schema (rollback / deploy-order safety):
+    // its scheduler inserts (2/3 splits, never-reused questions), its pool query and the public round query.
+    await db.batch([
+      db.prepare(`INSERT INTO daily_rounds (day, number, status, florida_count) VALUES (?, ?, 'scheduled', ?)`).bind('2027-01-05', 47, 3),
+      db.prepare(`INSERT INTO daily_round_items (day, position, question_id) VALUES (?, ?, ?)`).bind('2027-01-05', 1, 'q14'),
+    ]);
+    const oldPool = await db.prepare(`SELECT q.id FROM questions q WHERE NOT EXISTS (SELECT 1 FROM daily_round_items d WHERE d.question_id = q.id)`).all();
+    expect(oldPool.results).toEqual([]);
+    const oldRound = await db
+      .prepare(`SELECT r.day, r.number, r.status, i.position, q.play_title FROM daily_rounds r LEFT JOIN daily_round_items i ON i.day = r.day LEFT JOIN questions q ON q.id = i.question_id WHERE r.day = ? ORDER BY i.position`)
+      .bind('2026-11-20')
+      .all();
+    expect(oldRound.results.map((r) => r.play_title)).toEqual(['Title 0', 'Title 1', 'Title 2', 'Title 3', 'Title 4']);
+
     const ddl = await db.prepare(`SELECT sql FROM sqlite_master WHERE name = 'daily_round_items'`).first<{ sql: string }>();
     expect(ddl!.sql).toMatch(/REFERENCES "?daily_rounds"?\(day\)/);
   });

@@ -165,3 +165,44 @@ describe('planSchedule', () => {
     expect(ms).toBeLessThan(250); // generous for CI; see the measured figure in the report
   });
 });
+
+describe('cooldown boundary (off-by-one)', () => {
+  // Exactly five events: a day is fillable only if all five are outside the cooldown.
+  const five = bank(3, 2);
+  const usedOn = (date: string): ScheduledUse[] => five.map((q) => ({ date, questionId: q.id, eventId: q.eventId }));
+  const plan = (history: ScheduledUse[], date: string, cooldownDays = 30) => planSchedule({ questions: five, history, dates: [date], cooldownDays, rng: createRng('edge') });
+
+  it('an event shown on day D is blocked on D+29 and free again on D+30 (cooldown 30 = at least 30 days apart)', () => {
+    expect(plan(usedOn(START), addDays(START, 29)).ok).toBe(false);
+    expect(plan(usedOn(START), addDays(START, 30)).ok).toBe(true);
+  });
+
+  it('applies the same boundary to persisted days AFTER the planned date', () => {
+    expect(plan(usedOn(addDays(START, 29)), START).ok).toBe(false);
+    expect(plan(usedOn(addDays(START, 30)), START).ok).toBe(true);
+  });
+
+  it('within one run, a 150-event bank under a 30-day cooldown repeats each event exactly 30 days later, never 29', () => {
+    const r = planSchedule({ questions: bank(75, 75), history: [], dates: dateRange(START, 61), cooldownDays: 30, rng: createRng('rotation') });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const seen = new Map<string, string>();
+    const gaps: number[] = [];
+    for (const d of r.days)
+      for (const q of d.questions) {
+        const prev = seen.get(q.eventId);
+        if (prev) gaps.push(daysBetween(prev, d.date));
+        seen.set(q.eventId, d.date);
+      }
+    expect(gaps.length).toBeGreaterThan(0);
+    expect(Math.min(...gaps)).toBe(30);
+  });
+
+  it('cooldown 1 allows the next day; cooldown 0 still forbids a repeat within the same day', () => {
+    expect(plan(usedOn(START), addDays(START, 1), 1).ok).toBe(true);
+    expect(plan(usedOn(START), addDays(START, 1), 2).ok).toBe(false);
+    const r = planSchedule({ questions: five, history: [], dates: dateRange(START, 3), cooldownDays: 0, rng: createRng('zero') });
+    expect(r.ok).toBe(true);
+    if (r.ok) for (const d of r.days) expect(new Set(d.questions.map((q) => q.eventId)).size).toBe(5);
+  });
+});

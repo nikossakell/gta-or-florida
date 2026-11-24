@@ -67,7 +67,20 @@ The flow is Discover → Verify → Draft → Review → Approve → Store → S
    - To drop a question: `questions:reject` for candidates, `withdraw --question` for anything already scheduled.
 5. **Generate the schedule** (next section).
 
-Aim for an inventory of about 300 approved questions (150 Florida, 150 GTA). A 30-day event cooldown needs at least 5 × 30 = 150 distinct events to rotate indefinitely, and about 75 per side for 50/50 days. The scheduler warns when you are below that. Never fill the bank with invented or placeholder content.
+Aim for an inventory of about 300 approved questions (150 Florida, 150 GTA). Never fill the bank with invented or placeholder content.
+
+The simulation below plans 90 days under a 30-day cooldown, 20 seeds per bank, with synthetic events (`npm run schedule:simulate -- --events 150,200,300`):
+
+| Distinct events | Failures | Repeat interval (min / median / max days) | Days resampled | Same 5 events as 30 days earlier |
+| --- | --- | --- | --- | --- |
+| 150 (75/75) | 0 | 30 / 30 / 30 | ~53% | 100% (a fixed 30-day loop) |
+| 200 (100/100) | 0 | 30 / 37 / 85 | 0% | 0% |
+| 300 (150/150) | 0 | 30 / 49 / 89 | 0% | 0% |
+| 300 (120/180) | 0 | 30 / 46 / 89 | 0% | 0% |
+
+- **150 events is the hard minimum.** It works, but every day repeats exactly the events of 30 days earlier, and the splits are skewed towards 0/5 and 5/0.
+- **About 200 or more** gives a varied, binomial-looking schedule. A 40/60 imbalance still yields about 50% Florida per day; the smaller side simply repeats closer to the 30-day minimum.
+- **The planner reports thin inventory.** It warns when a side has fewer than about 75 events.
 
 ### Batch file format
 
@@ -151,11 +164,18 @@ npm run admin -- schedule:top-up                 # what the cron does (see below
 
 The cron, `apps/worker/wrangler.jsonc`, runs twice a day (`5 0,12 * * *`). It publishes due days and tops the schedule up to `SCHEDULE_AHEAD_DAYS` (default 30, at most 90) with cooldown `EVENT_COOLDOWN_DAYS` (default 30), both optional Worker vars.
 
-When the inventory runs low, the cron still writes the days it can fill, so today keeps a round. The response, the stats and the ingest alarm (`runwayDays`) report the shortage well before it reaches today.
+When the inventory runs low, the cron writes only a contiguous run of days from today and never skips a date to fill a later one. The shortage is reported long before it reaches today:
+- in the response (`shortage`, `low_inventory`, `runwayDays`);
+- in the admin stats;
+- in the ingest alarm.
+
+Two situations are signalled loudly rather than left silent:
+- **`no_round_today`:** today has no round, so players see "not ready". The cron logs this at error level, `last_schedule_run` records `todayPlayable: false`, the stats warn, and the daily smoke heartbeat fails.
+- **`schedule_gap`:** a day with no round between scheduled days. This can only happen when a withdrawal drops a future day that the cooldown does not allow to refill. It is reported in the response, the cron's error log and the stats (`Missing round(s) on …`). To fix it, approve questions about other events or shorten the cooldown, then run `npm run admin -- schedule:top-up`.
 
 ### Performance
 
-The planner was measured in Node: a 90-day plan from 300 questions takes about 5 ms of CPU when warm, and the cron's daily top-up about 0.3 ms. Workers Free allows 10 ms of CPU per request. If a 90-day request ever exceeds that on a cold start, re-run it: nothing is written unless the whole plan succeeds. Alternatively, run it as `--days 30` three times with consecutive `--start` dates; each run respects the days already written.
+The planner was measured in Node: a 90-day plan from 300 questions takes about 4 ms of CPU on average (p95 about 5 ms), and the cron's daily top-up about 0.3 ms. A `db.batch()` counts as a single query against D1's per-invocation limit, however many days it writes. Workers Free allows 10 ms of CPU per request. If a 90-day request ever exceeds that on a cold start, re-run it: nothing is written unless the whole plan succeeds. Alternatively, run it as `--days 30` three times with consecutive `--start` dates; each run respects the days already written.
 
 ## Development fixtures
 

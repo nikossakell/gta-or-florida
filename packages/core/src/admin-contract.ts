@@ -264,6 +264,8 @@ export type ScheduleResponse = {
   kept: string[];
   /** First date that could not be filled, if any. */
   shortageDate: string | null;
+  /** Days without a round between the start date and the last scheduled day of the period (holes players would hit). */
+  gaps: string[];
   error: { code: 'SCHEDULE_INFEASIBLE'; date: string; message: string; details: PlanFailure } | null;
   warnings: { code: string; date?: string; message: string }[];
   inventory: {

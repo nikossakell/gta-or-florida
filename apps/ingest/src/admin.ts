@@ -125,7 +125,7 @@ function showSource(id: string | undefined): number {
 }
 
 /** Human-readable schedule result. */
-export function formatSchedule(r: ScheduleResponse & { published?: number }): string {
+export function formatSchedule(r: ScheduleResponse & { published?: number; todayPlayable?: boolean }): string {
   const s = r.settings;
   const lines = [
     `${s.dryRun ? 'DRY RUN — nothing written. ' : ''}${s.startDate} + ${s.days} day(s), cooldown ${s.cooldownDays} day(s)${s.includeSpoilers ? ', spoilers included' : ''}`,
@@ -135,6 +135,7 @@ export function formatSchedule(r: ScheduleResponse & { published?: number }): st
   const i = r.inventory;
   lines.push(`  bank: ${i.eligibleFlorida} Florida (${i.floridaEvents} events) / ${i.eligibleGta} GTA (${i.gtaEvents} events) eligible; ${i.excludedSpoilers} spoiler(s) excluded; never used: ${i.unusedFlorida} Florida / ${i.unusedGta} GTA`);
   lines.push(`  runway: ${i.runwayDays} consecutive day(s) from ${s.startDate}; ${i.scheduledAhead} round(s) scheduled from then`);
+  if (r.gaps?.length) lines.push(`  GAPS (no round, but later days are scheduled): ${r.gaps.join(', ')}`);
   if (r.error) lines.push(`  ERROR ${r.error.code}: ${r.error.message}`);
   for (const w of r.warnings.filter((w) => w.code !== 'shortage')) lines.push(`  warning (${w.code}): ${w.message}`);
   return lines.join('\n');
@@ -299,8 +300,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     case 'schedule:top-up': {
       const r = await api.schedule(Number(str('days') ?? 30));
       if (json) print(r, true);
-      else console.log(`published ${r.published ?? 0} due day(s)\n${formatSchedule(r)}`);
-      return r.ok ? 0 : 2;
+      else console.log(`published ${r.published ?? 0} due day(s); today ${(r as { todayPlayable?: boolean }).todayPlayable === false ? 'HAS NO ROUND' : 'ok'}\n${formatSchedule(r)}`);
+      return r.ok && !r.gaps.length && (r as { todayPlayable?: boolean }).todayPlayable !== false ? 0 : 2;
     }
     case 'schedule': {
       const days = Number(str('days') ?? 30);
