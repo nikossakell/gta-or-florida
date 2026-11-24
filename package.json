@@ -31,6 +31,7 @@
     "ci": "npm run typecheck && npm run test && npm run validate",
     "ingest:batch": "tsx --env-file-if-exists=.env apps/ingest/src/run.ts",
     "ingest:url": "tsx --env-file-if-exists=.env apps/ingest/src/ingest-url.ts",
+    "ingest:official": "tsx --env-file-if-exists=.env apps/ingest/src/ingest-official.ts",
     "admin": "tsx --env-file-if-exists=.env apps/ingest/src/admin.ts",
     "legacy:export": "tsx apps/ingest/src/legacy.ts export",
     "legacy:import": "tsx --env-file-if-exists=.env apps/ingest/src/legacy.ts import",

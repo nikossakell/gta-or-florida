@@ -3,8 +3,13 @@
  * Bundled into the Worker and the ingestion job; no I/O, no secrets.
  */
 import {
+  ACQUISITION_METHODS,
   FEED_ACCESS_STATUSES,
   hostMatches,
+  OPERATION_STATUSES,
+  SOURCE_OPERATIONS,
+  scopedHosts,
+  urlBelongsToSource,
   LICENSE_STATUSES,
   parse,
   s,
@@ -15,6 +20,8 @@ import {
   type SourcePolicy,
 } from '@gof/core';
 import registryJson from '../sources.policy.json';
+
+const opStatus = s.optional(s.enum(OPERATION_STATUSES));
 
 const policySchema = s.object({
   id: s.string({ min: 1, max: 120, pattern: /^[a-z0-9:._-]+$/ }),
@@ -38,6 +45,29 @@ const policySchema = s.object({
       reviewedBy: s.optional(s.string({ min: 1, max: 80 })),
       reviewedAt: s.optional(s.string({ max: 10, pattern: /^\d{4}-\d{2}-\d{2}$/ })),
       findings: s.optional(s.string({ max: 2000 })),
+    }),
+  ),
+  pathScopes: s.optional(s.array(s.string({ min: 5, max: 200, pattern: /^[a-z0-9.-]+\/[A-Za-z0-9._~\/-]*$/ }), { max: 10 })),
+  access: s.optional(
+    s.object({
+      officialGovernment: s.boolean(),
+      operations: s.object({
+        discover: opStatus,
+        fetch: opStatus,
+        store: opStatus,
+        extractFacts: opStatus,
+        aiProcessing: opStatus,
+        publishSummary: opStatus,
+        reproduceOriginal: opStatus,
+        useMedia: opStatus,
+      } satisfies Record<(typeof SOURCE_OPERATIONS)[number], unknown>),
+      acquisition: s.enum(ACQUISITION_METHODS),
+      minIntervalMs: s.int({ min: 1000, max: 3_600_000 }),
+      robots: s.optional(s.string({ max: 300 })),
+      basis: s.optional(s.array(s.string({ max: 300, pattern: /^https:\/\// }), { max: 10 })),
+      reviewedBy: s.optional(s.string({ min: 1, max: 80 })),
+      reviewedAt: s.optional(s.string({ max: 10, pattern: /^\d{4}-\d{2}-\d{2}$/ })),
+      findings: s.optional(s.string({ max: 3000 })),
     }),
   ),
 });
@@ -69,6 +99,19 @@ export function loadRegistry(raw: unknown): SourceRegistry {
     if (fa?.status === 'allowed' && !fa.basis?.length) problems.push(`${src.id}: feedAccess allowed needs a documented basis (official URL)`);
     if (fa?.status === 'allowed' && src.licenseStatus === 'blocked') problems.push(`${src.id}: a blocked source cannot have feed access`);
     if (fa?.aiClassification && fa.status !== 'allowed') problems.push(`${src.id}: aiClassification requires feedAccess allowed`);
+    for (const sc of src.pathScopes ?? []) {
+      const host = sc.slice(0, sc.indexOf('/'));
+      if (!src.hosts.includes(host)) problems.push(`${src.id}: pathScope ${sc} is not on one of its hosts`);
+    }
+    const ac = src.access;
+    if (ac) {
+      const allowed = Object.entries(ac.operations).filter(([, st]) => st === 'allowed').map(([op]) => op);
+      if (allowed.length && (!ac.reviewedBy || !ac.reviewedAt || !ac.basis?.length)) problems.push(`${src.id}: allowed operations (${allowed.join(', ')}) need reviewedBy + reviewedAt + a documented basis`);
+      if (allowed.length && src.licenseStatus === 'blocked') problems.push(`${src.id}: a blocked source cannot allow any operation`);
+      if (ac.operations.publishSummary === 'allowed' && ac.operations.extractFacts !== 'allowed') problems.push(`${src.id}: publishSummary requires extractFacts allowed`);
+      if (ac.operations.reproduceOriginal === 'allowed' && !src.canDisplayOriginalTitle) problems.push(`${src.id}: reproduceOriginal requires canDisplayOriginalTitle (rights review)`);
+      if (ac.acquisition !== 'explicit_urls' && ac.acquisition !== 'none' && ac.operations.discover === 'allowed' && ac.operations.fetch !== 'allowed') problems.push(`${src.id}: automated discovery requires fetch allowed`);
+    }
   }
   if (problems.length) throw new Error(`sources.policy.json: ${problems.join('; ')}`);
   return r.value as SourceRegistry;
@@ -77,12 +120,24 @@ export function loadRegistry(raw: unknown): SourceRegistry {
 export const REGISTRY: SourceRegistry = loadRegistry(registryJson);
 export const POLICY_VERSION = REGISTRY.policyVersion;
 
-/** Resolve the policy for a URL host (fail closed: unknown hosts are unreviewed). */
+/**
+ * Resolve the policy for a URL host (fail closed: unknown hosts are unreviewed). A host that a source only
+ * owns under specific paths (shared platforms, see `pathScopes`) never resolves to that source by host
+ * alone: use `sourceForUrl` when the full URL is known.
+ */
 export function sourceForHost(host: string, registry: SourceRegistry = REGISTRY): SourcePolicy {
-  const found = registry.sources.find((src) => hostMatches(host, src.hosts));
+  const h0 = host.toLowerCase().replace(/^www\./, '');
+  const found = registry.sources.find((src) => hostMatches(host, src.hosts) && !scopedHosts(src).includes(h0));
   if (found) return found;
   const h = host.toLowerCase().replace(/^www\./, '');
   return unreviewedSource(`publisher:${h}`, 'publisher', h, [h]);
+}
+
+/** Resolve the policy for a full URL (honours path scopes; fail closed like sourceForHost). */
+export function sourceForUrl(raw: string | URL, registry: SourceRegistry = REGISTRY): SourcePolicy {
+  const url = typeof raw === 'string' ? new URL(raw) : raw;
+  const scoped = registry.sources.find((src) => (src.pathScopes?.length ?? 0) > 0 && urlBelongsToSource(url, src) && scopedHosts(src).includes(url.hostname.toLowerCase().replace(/^www\./, '')));
+  return scoped ?? sourceForHost(url.hostname, registry);
 }
 
 export function sourceById(id: string, registry: SourceRegistry = REGISTRY): SourcePolicy | undefined {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { loadRegistry, REGISTRY, sourceForHost } from '../src/index.ts';
+import { loadRegistry, REGISTRY, sourceById, sourceForHost, sourceForUrl } from '../src/index.ts';
+import { SOURCE_OPERATIONS } from '@gof/core';
 
 const base = { id: 'publisher:a.example.org', type: 'publisher', name: 'A', hosts: ['a.example.org'], canUseEditorialSummary: false, canDisplayOriginalTitle: false, autoPublishAllowed: false };
 
@@ -43,5 +44,46 @@ describe('source policy registry', () => {
     const withFeed = REGISTRY.sources.filter((s) => s.feedAccess);
     expect(withFeed.length).toBeGreaterThanOrEqual(5);
     for (const s of withFeed) expect(s.feedAccess, s.id).toMatchObject({ status: 'unreviewed', aiClassification: false });
+  });
+
+  describe('official-report sources (FWC, Flagler County Sheriff)', () => {
+    const OFFICIAL = ['publisher:myfwc.com', 'publisher:flaglersheriff.com'];
+
+    it('are registered with rights unreviewed and EVERY operation still unknown (no silent approval)', () => {
+      // Changing any of this is an owner decision: update the registry deliberately, with reviewer, date and basis.
+      for (const id of OFFICIAL) {
+        const src = sourceById(id)!;
+        expect(src).toMatchObject({ licenseStatus: 'unreviewed', canUseEditorialSummary: false, canDisplayOriginalTitle: false, autoPublishAllowed: false });
+        expect(src.access).toMatchObject({ officialGovernment: true, acquisition: 'explicit_urls' });
+        for (const op of SOURCE_OPERATIONS) expect(src.access!.operations[op], `${id} ${op}`).toBe('unknown');
+      }
+    });
+
+    it('resolves GovDelivery by path: only the FWC account belongs to FWC', () => {
+      expect(sourceForUrl('https://content.govdelivery.com/accounts/FLFFWCC/bulletins/3d0b75e').id).toBe('publisher:myfwc.com');
+      expect(sourceForUrl('https://content.govdelivery.com/accounts/USDOJ/bulletins/1').id).toBe('publisher:content.govdelivery.com');
+      expect(sourceForHost('content.govdelivery.com').id).toBe('publisher:content.govdelivery.com');
+      expect(sourceForUrl('https://flaglersheriff.com/news/x/').id).toBe('publisher:flaglersheriff.com');
+    });
+
+    it('leaves the GTA wiki policy and the other sources untouched', () => {
+      expect(sourceById('grandtheftwiki')).toMatchObject({ licenseStatus: 'unreviewed', canUseEditorialSummary: false, autoPublishAllowed: false });
+      expect(sourceById('grandtheftwiki')!.access).toBeUndefined();
+      expect(REGISTRY.sources.filter((s) => s.access).map((s) => s.id).sort()).toEqual([...OFFICIAL].sort());
+    });
+
+    it('refuses allowed operations without reviewer, date and documented basis, and other inconsistent grants', () => {
+      const access = (operations: object, extra: object = {}) => ({ officialGovernment: true, operations, acquisition: 'explicit_urls', minIntervalMs: 5000, ...extra });
+      const load = (a: object, src: object = {}) => () => loadRegistry({ policyVersion: 'x', sources: [{ ...base, licenseStatus: 'unreviewed', access: a, ...src }] });
+      expect(load(access({ fetch: 'allowed' }))).toThrow(/need reviewedBy \+ reviewedAt \+ a documented basis/);
+      const reviewed = { reviewedBy: 'owner', reviewedAt: '2026-11-24', basis: ['https://a.example.org/terms'] };
+      expect(load(access({ fetch: 'allowed' }, reviewed))).not.toThrow();
+      expect(load(access({ publishSummary: 'allowed', extractFacts: 'unknown' }, reviewed))).toThrow(/publishSummary requires extractFacts/);
+      expect(load(access({ fetch: 'allowed' }, reviewed), { licenseStatus: 'blocked' })).toThrow(/blocked source cannot allow/);
+      expect(load(access({ reproduceOriginal: 'allowed' }, reviewed))).toThrow(/reproduceOriginal requires canDisplayOriginalTitle/);
+      expect(load(access({ discover: 'allowed', fetch: 'unknown' }, { ...reviewed, acquisition: 'feed' }))).toThrow(/automated discovery requires fetch/);
+      expect(load(access({ fetch: 'perhaps' }))).toThrow(/expected one of/);
+      expect(() => loadRegistry({ policyVersion: 'x', sources: [{ ...base, licenseStatus: 'unreviewed', pathScopes: ['other.example.org/x/'] }] })).toThrow(/not on one of its hosts/);
+    });
   });
 });

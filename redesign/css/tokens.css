@@ -1,0 +1,23 @@
+/* Daily Drive design tokens. Same dark palette in light and dark themes (named mood). */
+:root{
+  color-scheme:dark;
+  --night:#140F2B;
+  --plum:#221640;
+  --plum2:#2E1F55;
+  --line:#3D2B6B;
+  --pink:#FF5FA2;
+  --pinkD:#B8236B;
+  --teal:#2DE2C8;
+  --tealD:#0E8F7E;
+  --orange:#FF8A3D;
+  --orangeD:#B9541C;
+  --yellow:#FFD25A;
+  --yellowD:#B8860B;
+  --cream:#FFF1D6;
+  --muted:#C9BBE8;
+  --dim:#A797D2;
+  --px:"Press Start 2P",ui-monospace,monospace;
+  --lab:"Silkscreen",ui-monospace,monospace;
+  --read:"Rubik",system-ui,sans-serif;
+--notch:polygon(6px 0,calc(100% - 6px) 0,calc(100% - 6px) 3px,calc(100% - 3px) 3px,calc(100% - 3px) 6px,100% 6px,100% calc(100% - 6px),calc(100% - 3px) calc(100% - 6px),calc(100% - 3px) calc(100% - 3px),calc(100% - 6px) calc(100% - 3px),calc(100% - 6px) 100%,6px 100%,6px calc(100% - 3px),3px calc(100% - 3px),3px calc(100% - 6px),0 calc(100% - 6px),0 6px,3px 6px,3px 3px,6px 3px)}
+

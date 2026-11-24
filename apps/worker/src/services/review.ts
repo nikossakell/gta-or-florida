@@ -10,6 +10,7 @@ import {
   explanationProblems,
   hostMatches,
   nearCopyProblems,
+  OFFICIAL_PROVIDER,
   placeholderProblems,
   playTitleProblems,
   sourceProblems,
@@ -67,13 +68,15 @@ export type CandidateRow = {
   source_reviewed_by: string | null;
   source_reviewed_at: string | null;
   created_at: string;
+  /** Structured facts JSON (official-report items only). */
+  facts: string | null;
 };
 
 const CANDIDATE_SQL = `
   SELECT q.id AS question_id, q.quality_state, q.gate_decision, q.gate_reasons, q.answer_kind, q.play_title, q.play_title_reviewed,
          q.explanation, q.difficulty, q.is_fixture, q.created_at,
          inc.id AS incident_id, inc.incident_key, inc.kind, inc.category, inc.game, inc.game_detected, inc.florida_location, inc.florida_signal,
-         inc.location_verified, inc.status AS incident_status, inc.possible_duplicate_of, inc.similarity, inc.notes,
+         inc.location_verified, inc.status AS incident_status, inc.possible_duplicate_of, inc.similarity, inc.notes, inc.facts,
          sr.id AS reference_id, sr.provider, sr.original_url, sr.original_title, sr.publisher, sr.published_at, sr.link_status, sr.checked_at, sr.final_url,
          s.id AS source_id, s.canonical_host AS source_host, s.license_status, s.can_use_editorial_summary, s.can_display_original_title,
          s.reviewed_by AS source_reviewed_by, s.reviewed_at AS source_reviewed_at
@@ -116,7 +119,13 @@ export async function candidateDetails(db: D1Database, id: string) {
     db.prepare('SELECT day FROM daily_round_items WHERE question_id = ?').bind(row.question_id),
     db.prepare(`SELECT timestamp, actor_type, actor_id, decision, reason FROM review_log WHERE entity_id IN (?, ?, ?) ORDER BY id`).bind(row.question_id, row.incident_id, row.reference_id),
   ]);
-  return { ...row, references: refs!.results, scheduledOn: (days!.results as { day: string }[]).map((d) => d.day), log: log!.results };
+  let facts: unknown = null;
+  try {
+    facts = row.facts ? JSON.parse(row.facts) : null;
+  } catch {
+    facts = null;
+  }
+  return { ...row, facts, references: refs!.results, scheduledOn: (days!.results as { day: string }[]).map((d) => d.day), log: log!.results };
 }
 
 export type ReviewResult = { ok: true; questionId: string; state: string } | { ok: false; errors: string[] };
@@ -133,7 +142,7 @@ function sourceHosts(row: Pick<CandidateRow, 'source_id' | 'source_host'>): stri
  * Replaces ONLY the reuse-rights check of the licensed path; every other check still applies.
  */
 export function factualSummaryProblems(
-  row: Pick<CandidateRow, 'kind' | 'provider' | 'source_id' | 'source_host' | 'license_status' | 'original_title' | 'original_url'>,
+  row: Pick<CandidateRow, 'kind' | 'provider' | 'source_id' | 'source_host' | 'license_status' | 'original_title' | 'original_url'> & { facts?: string | null },
   req: Pick<ReviewRequest, 'playTitle' | 'explanation'> & { factual?: FactualAttestation },
   ctx: { appEnv?: string; now: Date },
 ): string[] {
@@ -148,7 +157,20 @@ export function factualSummaryProblems(
   // Original wording: the reviewer writes both texts in this request (no stored or AI drafts).
   if (req.playTitle === undefined) out.push('FACTUAL_TITLE_MISSING: write the play title yourself in this request');
   if (req.explanation === undefined) out.push('FACTUAL_EXPLANATION_MISSING: write the explanation yourself in this request');
-  if (!f.humanWritten) out.push('FACTUAL_NOT_HUMAN_WRITTEN: title and explanation must be written by the reviewer');
+  const origin = f.textOrigin ?? 'human_written';
+  if (origin === 'human_written' && !f.humanWritten) out.push('FACTUAL_NOT_HUMAN_WRITTEN: title and explanation must be written by the reviewer');
+  if (origin === 'machine_draft_reviewed') {
+    // Authorship is attested as it happened: a reviewed machine draft is never declared human-written.
+    if (f.humanWritten) out.push('FACTUAL_ORIGIN_CONFLICT: a reviewed machine draft cannot also be attested as human-written');
+    let draft: { problems?: unknown[] } | null = null;
+    try {
+      draft = row.facts ? ((JSON.parse(row.facts) as { draft?: { problems?: unknown[] } | null }).draft ?? null) : null;
+    } catch {
+      draft = null;
+    }
+    if (row.provider !== OFFICIAL_PROVIDER || !draft) out.push('MACHINE_DRAFT_MISSING: only official-report candidates with a facts-first draft can use textOrigin machine_draft_reviewed');
+    else if (!Array.isArray(draft.problems) || draft.problems.length > 0) out.push('MACHINE_DRAFT_INVALID: the stored draft failed validation; write the text yourself (textOrigin human_written)');
+  }
   if (!f.incidentVerified) out.push('FACTUAL_INCIDENT_UNVERIFIED: verify the incident itself, not just the headline');
   if (!f.claimsVerified) out.push('FACTUAL_CLAIMS_UNVERIFIED: every claim in the explanation must be supported by the evidence');
   if (!f.privacyChecked) out.push('FACTUAL_PRIVACY_UNCHECKED: confirm no private individual is named and allegations are worded as allegations');
@@ -226,6 +248,8 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
     })) {
       err(`${p} (${row.source_id}). Rights are decided per source in packages/config/sources.policy.json, then deployed + synced. For your own wording of verified facts, use mode factual_summary.`);
     }
+    // Official reports also need their per-operation access cleared; reuse rights alone do not cover it.
+    if (row.provider === OFFICIAL_PROVIDER) for (const p of sourceAccessProblems(row, appEnv)) err(p);
   }
   if (req.playTitle === undefined && !row.play_title_reviewed) err('playTitle is required: write (or confirm) the neutral title yourself');
   const exactTitleAllowed = row.license_status === 'approved' && row.can_display_original_title === 1;
@@ -459,7 +483,7 @@ export async function mergeIncidents(db: D1Database, req: { action: 'merge' | 'u
 export async function collectStats(db: D1Database, now: Date) {
   const today = utcDate(now);
   const since = new Date(now.getTime() - 86_400_000).toISOString();
-  const [byState, byGate, sources, rounds, runs, usage, lastSchedule, benchmark] = await db.batch([
+  const [byState, byGate, sources, rounds, runs, usage, lastSchedule, benchmark, sourceYield] = await db.batch([
     db.prepare(`SELECT inc.kind, q.quality_state AS state, COUNT(*) AS n FROM questions q JOIN incidents inc ON inc.id = q.incident_id WHERE q.is_fixture = 0 GROUP BY inc.kind, q.quality_state`),
     db.prepare(`SELECT COALESCE(gate_decision, 'none') AS decision, quality_state AS state, COUNT(*) AS n FROM questions WHERE is_fixture = 0 GROUP BY 1, 2`),
     db.prepare(`SELECT license_status, COUNT(*) AS n FROM sources GROUP BY license_status`),
@@ -468,6 +492,13 @@ export async function collectStats(db: D1Database, now: Date) {
     db.prepare(`SELECT COUNT(*) AS runs, COALESCE(SUM(ai_requests),0) AS requests, COALESCE(SUM(tokens_input),0) AS tokensIn, COALESCE(SUM(tokens_output),0) AS tokensOut, COALESCE(SUM(neurons_estimate),0) AS neurons FROM ingestion_runs WHERE started_at >= ?`).bind(since),
     db.prepare(`SELECT value FROM app_meta WHERE key = 'last_schedule_run'`),
     db.prepare(`SELECT value FROM app_meta WHERE key = 'benchmark'`),
+    // Per-source yield: how many questions each source produced, by state (incl. used in rounds).
+    db.prepare(
+      `SELECT sr.source_id, sr.provider, q.quality_state AS state, COUNT(*) AS n,
+              SUM(CASE WHEN EXISTS (SELECT 1 FROM daily_round_items d WHERE d.question_id = q.id) THEN 1 ELSE 0 END) AS scheduled
+         FROM questions q JOIN source_references sr ON sr.id = q.primary_reference_id
+        WHERE q.is_fixture = 0 GROUP BY sr.source_id, sr.provider, q.quality_state ORDER BY sr.source_id`,
+    ),
   ]);
   const ahead = (rounds!.results as { status: string; n: number }[]).filter((r) => r.status !== 'withdrawn').reduce((n, r) => n + r.n, 0);
   const todayRow = await db.prepare('SELECT status FROM daily_rounds WHERE day = ?').bind(today).first<{ status: string }>();
@@ -487,6 +518,7 @@ export async function collectStats(db: D1Database, now: Date) {
     aiUsage24h: usageRow,
     lastSchedule: (lastSchedule!.results[0] as { value?: string } | undefined)?.value ?? null,
     benchmark: (benchmark!.results[0] as { value?: string } | undefined)?.value ?? null,
+    sourceYield: sourceYield!.results,
     policyVersion: POLICY_VERSION,
     warnings,
   };

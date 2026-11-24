@@ -39,6 +39,72 @@
       "reviewedAt": "2026-11-24"
     },
     {
+      "id": "publisher:myfwc.com",
+      "type": "publisher",
+      "name": "Florida Fish and Wildlife Conservation Commission",
+      "hosts": [
+        "myfwc.com",
+        "content.govdelivery.com"
+      ],
+      "pathScopes": [
+        "content.govdelivery.com/accounts/FLFFWCC/"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "attribution": "Florida Fish and Wildlife Conservation Commission, Division of Law Enforcement weekly report",
+      "notes": "Official Florida state agency. Registered 2026-11-24 for the official-report pilot; rights and every access operation remain UNKNOWN until the owner reviews them. GovDelivery (content.govdelivery.com) is a shared platform: only /accounts/FLFFWCC/ belongs to this source. The Division of Law Enforcement weekly reports ended in March 2025 (historical inventory only). Never import FWC images, logos or third-party photos.",
+      "access": {
+        "officialGovernment": true,
+        "operations": {
+          "discover": "unknown",
+          "fetch": "unknown",
+          "store": "unknown",
+          "extractFacts": "unknown",
+          "aiProcessing": "unknown",
+          "publishSummary": "unknown",
+          "reproduceOriginal": "unknown",
+          "useMedia": "unknown"
+        },
+        "acquisition": "explicit_urls",
+        "minIntervalMs": 5000,
+        "robots": "Checked 2026-11-24: myfwc.com robots.txt allows User-agent * with Content-Signal search=yes, ai-train=no, use=reference (no ai-input signal); content.govdelivery.com/robots.txt returns 404. Not a grant.",
+        "findings": "Research 2026-11-24 (not an approval). Weekly reports are GovDelivery bulletins (one bulletin = many short incident paragraphs grouped by region and county; officers are named, subjects usually are not). myfwc.com answered automated clients with a Cloudflare challenge (403) during earlier research: never bypass it. No reuse terms for bulletin text were found; Florida public-records status (ch. 119 F.S.) and any copyright position were NOT verified. Public records requests: https://myfwc.com/contact/public-records-requests/. Open decisions for the owner: fetch, store, extractFacts, aiProcessing, publishSummary; reproduceOriginal and useMedia stay denied in practice (no rights review)."
+      }
+    },
+    {
+      "id": "publisher:flaglersheriff.com",
+      "type": "publisher",
+      "name": "Flagler County Sheriff's Office",
+      "hosts": [
+        "flaglersheriff.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "attribution": "Flagler County Sheriff's Office (news release)",
+      "notes": "Official Florida county agency. Registered 2026-11-24 for the official-report pilot; rights and every access operation remain UNKNOWN until the owner reviews them. Releases name arrestees, list prior arrests and embed mugshots: none of that is ever stored or shown. Commander's Reports and records pages are raw police records and are not ingested.",
+      "access": {
+        "officialGovernment": true,
+        "operations": {
+          "discover": "unknown",
+          "fetch": "unknown",
+          "store": "unknown",
+          "extractFacts": "unknown",
+          "aiProcessing": "unknown",
+          "publishSummary": "unknown",
+          "reproduceOriginal": "unknown",
+          "useMedia": "unknown"
+        },
+        "acquisition": "explicit_urls",
+        "minIntervalMs": 5000,
+        "robots": "Checked 2026-11-24: robots.txt allows User-agent * with Content-Signal search=yes, ai-train=no, use=reference (no ai-input signal) and disallows AI crawlers (GPTBot, ClaudeBot, anthropic-ai, CCBot, Google-Extended, …). Not a grant.",
+        "findings": "Research 2026-11-24 (not an approval). News releases are WordPress pages (/news/<slug>/) with a 'Date:' line, the release text, a mugshot caption and a release number; /feed/ returned an empty RSS channel, so there is no reviewed discovery channel. No terms of use or reuse statement was found (privacy page only; it cites Florida's public-records law, ch. 119 F.S., for e-mail). Copyright/public-records status of release text was NOT verified. Records: https://flaglersheriff.com/contact-us/records/. Open decisions for the owner: fetch, store, extractFacts, aiProcessing, publishSummary."
+      }
+    },
+    {
       "id": "publisher:miamiherald.com",
       "type": "publisher",
       "name": "miamiherald.com",

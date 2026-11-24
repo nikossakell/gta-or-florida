@@ -1,0 +1,129 @@
+{
+  "_note": "All UI copy for the redesign. Mascot name: Gus. Endings keyed by score band.",
+  "zones": [
+    {
+      "n": "Welcome to Florida",
+      "s": "Welcome"
+    },
+    {
+      "n": "Ocean Drive",
+      "s": "Ocean"
+    },
+    {
+      "n": "Seven Mile Bridge",
+      "s": "Bridge"
+    },
+    {
+      "n": "Everglades",
+      "s": "Glades"
+    },
+    {
+      "n": "Vice Skyline",
+      "s": "Vice"
+    }
+  ],
+  "detourSigns": [
+    "DETOUR: wrong exit, classic",
+    "DETOUR: rollerblade parade",
+    "DETOUR: the old bridge. Bold.",
+    "DETOUR: gator has right of way",
+    "DETOUR: valet took the long way"
+  ],
+  "mascotLines": {
+    "idle": [
+      "Real or a mission? Your call.",
+      "Smells like Florida to me.",
+      "Could be a mission. Could be Tuesday.",
+      "I’ve seen weirder. Barely."
+    ],
+    "correct": [
+      "Called it.",
+      "Easy money.",
+      "Smooth driving.",
+      "You’ve been here before."
+    ],
+    "wrong": [
+      "Scenic route it is.",
+      "Bold choice.",
+      "Recalculating…",
+      "Happens to tourists."
+    ],
+    "streak": [
+      "TURBO! Three in a row!"
+    ],
+    "nervous": [
+      "Uh… the clock is melting."
+    ],
+    "perfect": [
+      "Vice Legend. Obviously."
+    ],
+    "low": [
+      "The swamp is lovely this time of year."
+    ]
+  },
+  "mascotAlt": {
+    "idle": "Gus the gator, relaxed in sunglasses",
+    "correct": "Gus grinning with a thumbs up",
+    "wrong": "Gus scratching his head, sunglasses askew",
+    "streak": "Gus cheering, sunglasses shining",
+    "nervous": "Gus sweating nervously",
+    "perfect": "Gus celebrating with confetti",
+    "low": "Gus slumped with a little rain cloud"
+  },
+  "endings": {
+    "vice": {
+      "title": "VICE LEGEND",
+      "dest": "VICE SKYLINE",
+      "mood": "perfect",
+      "art": "A neon penthouse tower over the night skyline with fireworks; the pink convertible is parked below.",
+      "msg": "Top floor, neon view, valet parked the car. You read Florida like a local.",
+      "scoreBand": "5"
+    },
+    "veteran": {
+      "title": "FLORIDA VETERAN",
+      "dest": "OCEAN DRIVE",
+      "mood": "correct",
+      "art": "Pastel Art Deco buildings on Ocean Drive at sunset, a beach umbrella on the sand and the convertible on the promenade.",
+      "msg": "One wrong turn and still on the beach by sunset. Respect.",
+      "scoreBand": "4"
+    },
+    "tourist": {
+      "title": "TOURIST WITH POTENTIAL",
+      "dest": "THE MOTEL",
+      "mood": "idle",
+      "art": "A retro roadside motel with a pink neon MOTEL sign and the convertible in the parking lot at dusk.",
+      "msg": "The ice machine works, and so do your instincts. Mostly.",
+      "scoreBand": "3"
+    },
+    "glades": {
+      "title": "LOST IN THE EVERGLADES",
+      "dest": "THE EVERGLADES",
+      "mood": "wrong",
+      "art": "The convertible sunk to its doors in a mangrove swamp while alligator eyes watch from the water.",
+      "msg": "The GPS gave up. The gators did not. Same road tomorrow?",
+      "scoreBand": "2"
+    },
+    "fman": {
+      "title": "CERTIFIED FLORIDA MAN",
+      "dest": "THE HIGHWAY SHOULDER",
+      "mood": "low",
+      "art": "A broken-down smoking convertible with its hood up on the highway shoulder, with the gator mascot sitting beside it.",
+      "msg": "Car smoking, gator judging, and honestly? Iconic. Fresh road tomorrow.",
+      "scoreBand": "0-1"
+    }
+  },
+  "verdicts": {
+    "correct": "CORRECT!",
+    "wrong": "WRONG WAY!",
+    "streakBanner": "TURBO STREAK ×3!",
+    "timeUp": "TIME'S UP!",
+    "next": "NEXT HEADLINE ▶",
+    "last": "SEE MY POSTCARD ▶",
+    "timerStates": {
+      "running": "SECONDS",
+      "urgent": "HURRY!",
+      "paused": "PAUSED"
+    }
+  },
+  "disclaimer": "Unofficial fan-made parody game. Not affiliated with or endorsed by Rockstar Games or Take-Two Interactive."
+}

@@ -251,7 +251,7 @@ npx wrangler deploy --env staging
 - **Backfill** (`DOJ_BACKFILL_ENABLED`, staging): τρέχει σε **ξεχωριστά Workflow instances** (`{"mode":"backfill"}`), όχι μέσα στα κανονικά runs. Μία σελίδα DOJ ανά βήμα, cursor `doj/backfillPage`, lease `doj/backfillLease` (ένα instance τη φορά, λήγει μόνο του σε 60′), και κάθε instance που τελειώνει με σελίδες που απομένουν ξεκινά τον διάδοχο (`backfill-<env>-p<cursor>`). Αποτυχία ή dry run δεν μετακινεί ποτέ τον cursor. Το cron το ξαναξεκινά αν σταματήσει· όταν φτάσει τις 365 ημέρες γίνεται `done`.
 - **Subrequests ανά instance (Workers Free: 50 ανά invocation, τα steps δεν τα μηδενίζουν, οι Service Binding κλήσεις μετράνε):** κάθε βήμα κρατά πρώτα το worst case του (redirects, retries, link checks, AI, API) από `SUBREQUEST_BUDGET` (45)· το «tail» (dedupe, import, checkpoints, inventory) μένει πάντα δεσμευμένο. Ό,τι δεν χωρά αναβάλλεται (`deferred`) χωρίς να προχωρήσει cursor. Κανένα βήμα με αιτήματα δεν κάνει retry· «Too many subrequests» = NonRetryable. `wrangler workflows instances describe … latest` → `subrequests.reserved/actual/deferred`.
 - **Μέτρηση 12 μηνών (2025-11-24 → 2026-11-23, 407 σελίδες, 20.350 releases):** 1.398 από τα τρία Florida USAO → 1.032 σοβαρά/ευάλωτα θύματα, 386 κατηγορίες χωρίς καταδίκη, 101 μετανάστευση/εκλογές, 16 routine → **9 candidates** με `DOJ_MIN_UNUSUAL=2` (15 με κατηγορίες)· ~5 πραγματικά «παιχνιδιάρικα». Το DOJ είναι νομικά καθαρό αλλά δεν αρκεί για 30 ημέρες Florida.
-- **Coast Guard / FWC:** δεν υλοποιήθηκαν. news.uscg.mil και uscg.mil αρνούνται αυτόματη πρόσβαση (Akamai «Access Denied», ακόμα και robots.txt)· το DVIDS feed υπάρχει αλλά το robots.txt επιστρέφει 502 → fail closed· το myfwc.com απαντά με Cloudflare challenge (403). Οι όροι επαναχρησιμοποίησης δεν μπορούσαν να επαληθευτούν, και το κρατικό περιεχόμενο της Florida δεν θεωρείται αυτόματα public domain.
+- **Coast Guard / FWC:** (FWC: βλ. §8g — μόνο owner-supplied GovDelivery bulletins, όχι το myfwc.com.) news.uscg.mil και uscg.mil αρνούνται αυτόματη πρόσβαση (Akamai «Access Denied», ακόμα και robots.txt)· το DVIDS feed υπάρχει αλλά το robots.txt επιστρέφει 502 → fail closed· το myfwc.com απαντά με Cloudflare challenge (403). Οι όροι επαναχρησιμοποίησης δεν μπορούσαν να επαληθευτούν, και το κρατικό περιεχόμενο της Florida δεν θεωρείται αυτόματα public domain.
 
 ## 8f. Δύο τρόποι έγκρισης: licensed και Independent Factual Summary
 
@@ -267,6 +267,29 @@ npx wrangler deploy --env staging
 AI: απενεργοποιημένο για κάθε item από publisher με `feedAccess.aiClassification: false` (ανεξάρτητα από το κανάλι: RSS, GDELT, manual) και για το dataset.
 
 **Πιλοτικός γύρος (staging, 3 Florida DOJ + 2 GTA):** βλ. την απάντηση της 2026-11-24 στο ιστορικό· σύνοψη: deploy API + ingestion → `sources:sync` → DOJ backfill (χειροκίνητα runs) → έγκριση 3 DOJ (licensed) + 2 GTA (factual_summary) με δικά σας κείμενα → `schedule --days 1` → `GET /api/challenge/today`.
+
+## 8g. Επίσημες αναφορές (FWC, Flagler County Sheriff) — facts-first pilot
+
+**Τι είναι:** `npm run ingest:official` αξιολογεί **μόνο URLs που δίνει ο owner** (καμία ανίχνευση/crawling): FWC weekly reports (GovDelivery, `content.govdelivery.com/accounts/FLFFWCC/bulletins/…`) και Flagler County Sheriff releases (`flaglersheriff.com/news/…`). Ένα weekly report = **πολλά ανεξάρτητα περιστατικά** (ένα passage ανά `<li>` κάτω από county heading) → ξεχωριστά candidates.
+
+**Ροή:** registry (path-aware: μόνο το `/accounts/FLFFWCC/` του GovDelivery ανήκει στο FWC) → access verdict → fetch (5″ ανά πηγή, backoff σε 429/5xx με Retry-After, **σταματά αμέσως σε 401/403 — ποτέ παράκαμψη**) → passages → **facts** (ρόλοι αντί για ονόματα, objects, legal stage, τοποθεσία/ημερομηνία με «basis», claims με αναφορά passage/sentence/sha-256 — *κανένα κείμενο πηγής δεν αποθηκεύεται*) → safety (ανήλικοι, σεξουαλικά, θάνατος/τραυματισμός, βία, κακοποίηση ζώων = reject· σοβαρή απειλή π.χ. ληστεία με «όπλο» = `safety_review`) → quality score → **draft από τα facts** (frames, όχι από το headline) → `draftProblems` (copy ≥ 7 λέξεων από την πηγή, synonym-swap του headline, λέξεις/αριθμοί/τόποι που δεν στηρίζονται, quotes, προσωπικά δεδομένα, «guilty» για κατηγορία, giveaways/τοποθεσία/υπηρεσία στον τίτλο, placeholders, near-copy). Χωρίς έγκυρο draft → `DRAFT_REQUIRED` (γράφει άνθρωπος). Κανένα AI (το `aiProcessing` δεν έχει εγκριθεί).
+
+**Δικαιώματα ανά λειτουργία** (`access.operations` στο registry: `discover, fetch, store, extractFacts, aiProcessing, publishSummary, reproduceOriginal, useMedia` → `unknown|allowed|denied`). FWC και Flagler: **όλα `unknown`**, `licenseStatus: unreviewed`. Συνέπειες:
+- Pilot με ρητά URLs: επιτρέπεται (όχι για `blocked` ή `fetch: denied`)· τα candidates **μένουν σε review**.
+- Unattended (cron/Workflow): **δεν τα αγγίζει**· το summary γράφει `official: [{status: "skipped", reasons: […]}]` + event `ingest.official_skipped` (όχι σιωπηλό «Completed»).
+- Έγκριση & δημοσίευση: απαιτούν `fetch + extractFacts + publishSummary = allowed` (με `reviewedBy/reviewedAt/basis`) **και** ανθρώπινη έγκριση, και στους δύο τρόπους (licensed/factual). Αλλαγή αργότερα σε `denied` → το scheduler/το public API την αποσύρουν (`SOURCE_ACCESS`).
+- Εικόνες/logos/mugshots/αρχικοί τίτλοι/κείμενο: ποτέ.
+
+**Έγκριση machine draft (αληθινή δήλωση συγγραφής):** `questions:approve --factual-summary --attest-machine-draft --use-draft …` (αντί για `--attest-human-written`) → `textOrigin: machine_draft_reviewed`, `humanWritten: false`. Αν αλλάξετε το κείμενο ή γράψετε δικό σας: `--attest-human-written` με `--play-title/--explanation`.
+
+```bash
+npm run admin -- sources:show --id publisher:myfwc.com        # τι επιτρέπεται / τι λείπει (offline)
+npm run ingest:official -- --url <FWC bulletin> --url <Flagler release> --dry-run --report /tmp/official.json
+npm run ingest:official -- --urls-file pilot-urls.txt --env staging --state pilot-state.json   # import → candidates
+npm run admin -- candidates:show --id <q>                      # facts, scores, draft problems
+npm run admin -- sources:yield
+```
+Migration: `0003_incident_facts.sql` (`incidents.facts`, JSON, internal) — `npm run db:migrate:staging -w @gof/worker` πριν το deploy.
 
 ## 9. Editorial review (ο κύκλος που γεμίζει το παιχνίδι)
 

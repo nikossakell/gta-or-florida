@@ -10,8 +10,10 @@
  *                     passed. Source reuse rights are NOT required (the text is the reviewer's own).
  * Both modes: verified active incident, verified link, enabled source, no placeholder text.
  * Factual summaries additionally need the access rules below (licensed rules stay exactly as before).
+ * Official-report items (provider official_report) need the owner to have cleared fetch, extractFacts and
+ * publishSummary for their source in BOTH modes — a rights approval or a reviewer cannot skip that.
  */
-import { feedFetchAllowed, placeholderProblems } from '@gof/core';
+import { accessOperationProblems, feedFetchAllowed, OFFICIAL_PROVIDER, OFFICIAL_PUBLISH_OPERATIONS, placeholderProblems } from '@gof/core';
 import { sourceById } from '@gof/config';
 
 /** Columns every eligibility check needs. Aliases: q questions, inc incidents, sr source_references, s sources, al review_log. */
@@ -73,6 +75,11 @@ export function sourceAccessProblems(row: { provider: string | null; source_id: 
     const access = src ? feedFetchAllowed(src) : { ok: false, reason: 'source not in the registry' };
     if (!access.ok) out.push(`UNAUTHORIZED_COLLECTION: this item came from a feed that is not currently allowed (${access.reason})`);
   }
+  if (row.provider === OFFICIAL_PROVIDER) {
+    // Re-read from the deployed registry every time: a later "denied" or a removed source invalidates eligibility.
+    if (!src) out.push(`SOURCE_ACCESS_UNRESOLVED: ${row.source_id} is not in the deployed registry`);
+    else for (const p of accessOperationProblems(src, OFFICIAL_PUBLISH_OPERATIONS)) out.push(`SOURCE_ACCESS_UNRESOLVED: ${p}`);
+  }
   return out;
 }
 
@@ -84,10 +91,13 @@ function attestationPassed(details: string | null): boolean {
   try {
     const d = JSON.parse(details) as { mode?: string; factual?: Record<string, unknown> };
     const f = d.factual;
+    // Who wrote the text is attested truthfully: the reviewer, or a facts-first machine draft the reviewer checked.
+    const origin = f?.textOrigin ?? 'human_written';
+    const authorship = (origin === 'human_written' && f?.humanWritten === true) || (origin === 'machine_draft_reviewed' && f?.humanWritten === false);
     return (
       d.mode === 'factual_summary' &&
       !!f &&
-      f.humanWritten === true &&
+      authorship &&
       f.incidentVerified === true &&
       f.claimsVerified === true &&
       f.privacyChecked === true &&
@@ -122,6 +132,7 @@ export function ineligibility(r: EligibilityRow, ctx: EligibilityContext): strin
   if (r.approval_mode === 'licensed') {
     if (!r.approval_decision || !LICENSED_DECISIONS.has(r.approval_decision)) return 'APPROVAL_MODE_MISMATCH';
     if (!(r.license_status === 'approved' && r.can_use_editorial_summary === 1)) return 'SOURCE_RIGHTS';
+    if (r.provider === OFFICIAL_PROVIDER && sourceAccessProblems(r, ctx.appEnv).length) return 'SOURCE_ACCESS';
     return null;
   }
   if (r.approval_mode === 'factual_summary') {

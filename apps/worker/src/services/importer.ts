@@ -9,8 +9,12 @@
  * D1 budget: a handful of lookups + one batch (= one transaction) per request.
  */
 import {
+  accessOperationProblems,
   canonicalizeUrl,
   evaluateAutoPublish,
+  OFFICIAL_PROVIDER,
+  OFFICIAL_PUBLISH_OPERATIONS,
+  operationStatus,
   explanationProblems,
   MANUAL_PROVIDER,
   parseAutoPublishMode,
@@ -24,7 +28,7 @@ import {
   type ImportItemResult,
   type SourcePolicy,
 } from '@gof/core';
-import { DEFAULT_THRESHOLDS, POLICY_VERSION, REGISTRY, sourceById, sourceForHost, type SourceRegistry } from '@gof/config';
+import { DEFAULT_THRESHOLDS, POLICY_VERSION, REGISTRY, sourceById, sourceForUrl, type SourceRegistry } from '@gof/config';
 import { isLocal, type Env } from '../env.ts';
 import { getMeta, isConstraintError, logStmt, newId, placeholders, setMetaStmt } from '../db/repo.ts';
 import { unsafeReferenceUrl } from '../security/url.ts';
@@ -57,7 +61,7 @@ export function resolveSource(item: ImportItem, registry: SourceRegistry = REGIS
     const host = new URL(item.reference.canonicalUrl).hostname;
     if (wiki && wiki.hosts.some((h) => host === h || host.endsWith(`.${h}`))) return wiki;
   }
-  return sourceForHost(new URL(item.reference.canonicalUrl).hostname, registry);
+  return sourceForUrl(item.reference.canonicalUrl, registry);
 }
 
 function staticProblems(item: ImportItem, env: Env, source: SourcePolicy): string[] {
@@ -75,6 +79,15 @@ function staticProblems(item: ImportItem, env: Env, source: SourcePolicy): strin
   if (item.kind === 'GTA_CANON' && source.type !== 'gta_wiki' && !fixture) out.push('SOURCE_KIND_MISMATCH: GTA canon must come from a registered GTA wiki source');
   if (item.kind === 'FLORIDA_NEWS' && source.type !== 'publisher' && !fixture) out.push('SOURCE_KIND_MISMATCH: Florida news must come from a publisher');
   if (item.attachToIncidentKey && item.kind !== 'FLORIDA_NEWS') out.push('ATTACH_NOT_ALLOWED: only Florida reports can attach to an existing incident');
+  // Official-report items: a registered official source whose fetch is not denied, with facts that point at
+  // the referenced document. Unknown operations are allowed IN (as candidates) — never into a round.
+  if (item.reference.provider === OFFICIAL_PROVIDER) {
+    if (!source.access) out.push(`OFFICIAL_SOURCE_UNREGISTERED: ${source.id} has no per-operation access review`);
+    else if (operationStatus(source, 'fetch') === 'denied') out.push(`SOURCE_OPERATION_DENIED: fetch is denied for ${source.id}`);
+    if (!item.facts) out.push('FACTS_REQUIRED: official-report items carry their structured facts');
+    else if (item.facts.evidenceUrl !== item.reference.originalUrl) out.push('FACTS_EVIDENCE_MISMATCH: facts.evidenceUrl must be the referenced document');
+    if (item.kind !== 'FLORIDA_NEWS') out.push('SOURCE_KIND_MISMATCH: official reports are Florida incidents');
+  } else if (item.facts) out.push('FACTS_NOT_ALLOWED: structured facts are only accepted from official-report adapters');
   return out;
 }
 
@@ -250,14 +263,18 @@ export async function importBatch(batch: ImportBatch, ctx: Ctx): Promise<ImportI
           ? 'approved'
           : 'candidate';
     const approvedByPolicy = state === 'approved' && !fixture;
-    const reasons = [...new Set([...(gate?.reasons ?? []), ...(prefilterReject ? item.prefilter.reasonCodes.map((r) => `PREFILTER_${r}`) : [])])];
+    const accessReasons =
+      ref.provider === OFFICIAL_PROVIDER && accessOperationProblems(source, OFFICIAL_PUBLISH_OPERATIONS).length ? ['SOURCE_ACCESS_UNRESOLVED'] : [];
+    const reasons = [
+      ...new Set([...(gate?.reasons ?? []), ...accessReasons, ...(prefilterReject ? item.prefilter.reasonCodes.map((r) => `PREFILTER_${r}`) : [])]),
+    ];
 
     stmts.push(
       db
         .prepare(
           `INSERT INTO incidents (id, incident_key, kind, category, game, game_detected, florida_location, florida_signal, location_verified,
-             verification_status, sensitivity, possible_duplicate_of, similarity, notes, is_fixture)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             verification_status, sensitivity, possible_duplicate_of, similarity, notes, is_fixture, facts, occurred_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           incidentId,
@@ -275,6 +292,8 @@ export async function importBatch(batch: ImportBatch, ctx: Ctx): Promise<ImportI
           item.incident.similarity,
           item.incident.notes,
           fixture ? 1 : 0,
+          item.facts ? JSON.stringify(item.facts) : null,
+          item.facts?.eventDate.precision === 'day' ? item.facts.eventDate.from : null,
         ),
     );
     stmts.push(insertRef(incidentId));

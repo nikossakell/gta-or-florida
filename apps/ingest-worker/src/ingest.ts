@@ -30,6 +30,7 @@ import { discoverDoj, discoverDojBackfill, discoverFloridaManDataset, discoverGd
 import type { ExistingTitle } from '@gof/ingest/deduplicate.ts';
 import type { WorkerClient } from '@gof/ingest/import.ts';
 import type { SourcesConfig } from '@gof/ingest/normalize.ts';
+import { fetchVerdict, OFFICIAL_ADAPTERS } from '@gof/ingest/official.ts';
 import {
   buildImportItem,
   classifyOne,
@@ -98,7 +99,25 @@ export type IngestSummary = {
   /** Worst-case reservations (deterministic) and actual calls made in this invocation, per category. */
   subrequests: { limit: number; reserved: Record<SubrequestCategory, number>; actual: Record<SubrequestCategory, number>; deferred: string[] };
   backfill?: { from: string; to: string; pages: number; done: boolean; next: string | null; skipped?: string };
+  /**
+   * Official-report sources (FWC, sheriff newsrooms). Unattended runs never fetch them until the owner clears
+   * discover/fetch/extractFacts and an automated acquisition method; until then each one is reported as
+   * explicitly SKIPPED with its reasons, so a "Completed" run is never mistaken for ingested official content.
+   */
+  official: { sourceId: string; adapter: string; status: 'skipped'; reasons: string[] }[];
 };
+
+/** Pure (registry only): why each official-report adapter did not run unattended. */
+export function officialSkips(lookup: (id: string) => SourcePolicy | undefined): IngestSummary['official'] {
+  return OFFICIAL_ADAPTERS.map((a) => {
+    const src = lookup(a.sourceId);
+    if (!src) return { sourceId: a.sourceId, adapter: a.id, status: 'skipped' as const, reasons: ['SOURCE_NOT_IN_REGISTRY'] };
+    const v = fetchVerdict(src, 'automated');
+    // Even with every operation cleared, no unattended discovery adapter exists yet (explicit URLs only).
+    const reasons = v.allowed ? ['AUTOMATED_DISCOVERY_NOT_IMPLEMENTED'] : v.problems.map((p) => p.split(':')[0]!);
+    return { sourceId: a.sourceId, adapter: a.id, status: 'skipped' as const, reasons: [...new Set(reasons)] };
+  });
+}
 
 export class StepBudgetError extends Error {
   constructor(max: number) {
@@ -616,8 +635,10 @@ export async function runIngestion(input: { runId: string; startedAt: string; pa
     mode,
     subrequests: { limit: plan.limit, reserved: { ...plan.reserved }, actual: { ...meter.used }, deferred },
     ...(backfill ? { backfill } : {}),
+    official: mode === 'run' && want('florida') ? officialSkips(deps.lookup ?? ((id: string) => sourceById(id))) : [],
   };
   await run('summary', LOCAL, async () => {
+    for (const o of summary.official) deps.event('ingest.official_skipped', { runId, ...o });
     deps.event('ingest.run', { ...summary, neuronRates: Object.keys(NEURON_RATES) });
     return true;
   });

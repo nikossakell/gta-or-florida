@@ -15,12 +15,12 @@
  *   article text is never kept.
  */
 import { request } from 'node:https';
-import { sourceForHost } from '@gof/config';
+import { sourceForUrl } from '@gof/config';
 import { domainMatches, normalizePublisherUrl, type SourcesConfig } from '../normalize.ts';
 import { safeLookup, unsafeUrlReason } from '../verify.ts';
 import { decode } from './rss.ts';
 
-export type ArticleResponse = { status: number; location?: string; contentType?: string; body?: string };
+export type ArticleResponse = { status: number; location?: string; contentType?: string; body?: string; retryAfter?: string };
 export type ArticleRequest = (url: URL) => Promise<ArticleResponse>;
 
 export type FetchedArticle = { finalUrl: string; httpStatus: number; redirects: number; html: string };
@@ -31,6 +31,18 @@ export class ArticleRefusedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ArticleRefusedError';
+  }
+}
+
+/** Non-2xx answer (carries the status so callers can back off on 429/5xx and stop on 401/403). */
+export class ArticleHttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly retryAfterSeconds: number | null = null,
+  ) {
+    super(message);
+    this.name = 'ArticleHttpError';
   }
 }
 
@@ -51,7 +63,7 @@ export function articleUrlProblem(raw: string, cfg: Pick<SourcesConfig, 'domains
   if (!host.includes('.') || LOCAL_SUFFIXES.test(host)) return 'local or single-label hostname';
   if (!normalizePublisherUrl(url.href)) return 'aggregator or AMP-cache URL; submit the publisher\'s own article URL';
   if (domainMatches(host, cfg.domains.blocked.list)) return `${host} is a blocked (satire or excluded) domain`;
-  const src = sourceForHost(host);
+  const src = sourceForUrl(url);
   if (src.licenseStatus === 'blocked') return `source ${src.id} is blocked by the owner's source policy`;
   if (src.type !== 'publisher') return `source ${src.id} is a ${src.type}, not a news publisher`;
   return null;
@@ -72,9 +84,10 @@ function nodeGet(url: URL, timeoutMs: number, userAgent: string): Promise<Articl
         const status = res.statusCode ?? 0;
         const location = Array.isArray(res.headers.location) ? res.headers.location[0] : res.headers.location;
         const contentType = res.headers['content-type'];
+        const retryAfter = typeof res.headers['retry-after'] === 'string' ? res.headers['retry-after'] : undefined;
         const done = (body?: string) => {
           clearTimeout(deadline);
-          resolvePromise({ status, location, contentType, body });
+          resolvePromise({ status, location, contentType, body, retryAfter });
           res.destroy();
         };
         if (status < 200 || status >= 300 || !/html/i.test(contentType ?? '') || /gzip|br|deflate/i.test(String(res.headers['content-encoding'] ?? ''))) {
@@ -112,14 +125,14 @@ export async function fetchArticle(
   const send = opts.requestImpl ?? ((u: URL) => nodeGet(u, opts.timeoutMs ?? 15_000, opts.userAgent));
   const first = articleUrlProblem(raw, opts.cfg);
   if (first) throw new ArticleRefusedError(first);
-  const sourceId = sourceForHost(new URL(raw).hostname).id;
+  const sourceId = sourceForUrl(raw).id;
 
   let current = new URL(raw).href;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (hop > 0) {
       const problem = articleUrlProblem(current, opts.cfg);
       if (problem) throw new ArticleRefusedError(`redirect target rejected (${current.slice(0, 120)}): ${problem}`);
-      const next = sourceForHost(new URL(current).hostname).id;
+      const next = sourceForUrl(current).id;
       if (next !== sourceId) throw new ArticleRefusedError(`redirect leaves ${sourceId} for ${next}; submit the publisher's final article URL directly`);
     }
     const url = new URL(current);
@@ -134,8 +147,9 @@ export async function fetchArticle(
       current = new URL(res.location, url).href;
       continue;
     }
-    if (res.status === 429) throw new Error(`${url.host} HTTP 429 (rate limited); try again later`);
-    if (res.status < 200 || res.status >= 300) throw new Error(`${url.host} HTTP ${res.status}`);
+    const retryAfter = res.retryAfter && /^\d{1,5}$/.test(res.retryAfter) ? Number(res.retryAfter) : null;
+    if (res.status === 429) throw new ArticleHttpError(429, `${url.host} HTTP 429 (rate limited); try again later`, retryAfter);
+    if (res.status < 200 || res.status >= 300) throw new ArticleHttpError(res.status, `${url.host} HTTP ${res.status}`, retryAfter);
     if (!/html/i.test(res.contentType ?? '')) throw new ArticleRefusedError(`${url.host} did not return an HTML page (content-type: ${res.contentType ?? 'none'})`);
     if (res.body === undefined) throw new Error(`${url.host} returned an unreadable (compressed or empty) body`);
     return { finalUrl: current, httpStatus: res.status, redirects: hop, html: res.body };
@@ -207,5 +221,5 @@ export function extractArticleMeta(html: string, pageUrl: string, now: Date = ne
 export function chooseCanonical(meta: ArticleMeta, finalUrl: string, cfg: Pick<SourcesConfig, 'domains'>): string {
   const c = meta.canonicalUrl;
   if (!c || articleUrlProblem(c, cfg)) return finalUrl;
-  return sourceForHost(new URL(c).hostname).id === sourceForHost(new URL(finalUrl).hostname).id ? c : finalUrl;
+  return sourceForUrl(c).id === sourceForUrl(finalUrl).id ? c : finalUrl;
 }

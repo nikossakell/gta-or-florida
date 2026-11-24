@@ -18,7 +18,7 @@ import { userInfo } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { formatIssues, importItemSchema, MANUAL_PROVIDER, parse, type LinkCheck, type RunReport } from '@gof/core';
-import { AI_DEFAULT_BUDGET, REGISTRY, sourceForHost } from '@gof/config';
+import { AI_DEFAULT_BUDGET, REGISTRY, sourceForUrl } from '@gof/config';
 import { ArticleRefusedError, articleUrlProblem, chooseCanonical, extractArticleMeta, fetchArticle, type ArticleRequest } from './adapters/article.ts';
 import { createBudget, type AiProvider } from './classify.ts';
 import { floridaRecord, type Log } from './discover.ts';
@@ -115,7 +115,7 @@ export async function main(argv = process.argv.slice(2), deps: IngestUrlDeps = {
     log.error(`Refused ${raw.slice(0, 200)}: ${problem}`);
     return 2;
   }
-  const source = sourceForHost(new URL(raw).hostname);
+  const source = sourceForUrl(raw);
   const registered = REGISTRY.sources.some((s) => s.id === source.id);
   log.info(`Source: ${source.id} — ${source.licenseStatus}${registered ? '' : ' (not in the registry; the Worker registers it as unreviewed)'}`);
   if (source.autoPublishAllowed) {

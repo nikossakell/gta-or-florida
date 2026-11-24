@@ -6,6 +6,7 @@
 import { CATEGORIES } from './types.ts';
 import { CONTENT_KINDS, GTA_GAMES, LINK_STATUSES, type GtaGame } from './content.ts';
 import { s, type Infer } from './schema.ts';
+import { incidentFactsSchema } from './facts.ts';
 
 export const MAX_IMPORT_ITEMS = 20;
 
@@ -105,6 +106,8 @@ export const importItemSchema = s.object({
   /** Deterministic pre-filter result from the job (the Worker re-checks policy itself). */
   prefilter: s.object({ decision: s.enum(['candidate', 'reject'] as const), reasonCodes: reason }),
   fixture: s.optional(s.boolean()),
+  /** Structured facts (official-report adapters): roles, normalized actions, claims → evidence refs. No source text. */
+  facts: s.optional(incidentFactsSchema),
 });
 export type ImportItem = Infer<typeof importItemSchema>;
 
@@ -157,9 +160,18 @@ export const APPROVAL_MODES = ['licensed', 'factual_summary'] as const;
 export type ApprovalMode = (typeof APPROVAL_MODES)[number];
 
 /** What the human reviewer verified for an Independent Factual Summary (all required, all explicit). */
+export const TEXT_ORIGINS = ['human_written', 'machine_draft_reviewed'] as const;
+export type TextOrigin = (typeof TEXT_ORIGINS)[number];
+
 export const factualAttestationSchema = s.object({
   /** The play title and explanation were written by the reviewer, not copied or adapted from the source. */
   humanWritten: s.boolean(),
+  /**
+   * Who wrote the text. Default "human_written" (humanWritten must be true). "machine_draft_reviewed": the
+   * reviewer checked a facts-first machine draft line by line against the evidence (humanWritten must then be
+   * false — the attestation states what actually happened; no fabricated authorship).
+   */
+  textOrigin: s.optional(s.enum(TEXT_ORIGINS)),
   /** The incident itself happened as described (checked against the evidence, not just the headline). */
   incidentVerified: s.boolean(),
   /** Every factual claim in the explanation is supported by the evidence. */

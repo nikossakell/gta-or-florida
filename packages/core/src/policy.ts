@@ -43,7 +43,88 @@ export type SourcePolicy = {
    * can* flags still gate every question. Absent = unreviewed (feeds are not fetched).
    */
   feedAccess?: FeedAccess;
+  /**
+   * Host + path scopes ("content.govdelivery.com/accounts/FLFFWCC/"). A host listed here belongs to this
+   * source ONLY under these paths (shared platforms such as GovDelivery host many agencies).
+   */
+  pathScopes?: string[];
+  /**
+   * Per-operation access decisions for official-report adapters (packages/core/src/policy.ts
+   * SOURCE_OPERATIONS). Separate from `licenseStatus`: a source may permit one operation and not another.
+   * Absent / "unknown" = not permitted for automation (fail closed).
+   */
+  access?: SourceAccess;
 };
+
+// ---------------------------------------------------------------------------
+// Per-operation source access (official-report adapters). Rights for discovering, fetching, storing,
+// extracting, AI processing, publishing an independent summary, reproducing original text and using
+// media are decided separately by the owner. A model, a robots.txt line or a successful fetch never
+// grants any of them.
+// ---------------------------------------------------------------------------
+
+export const SOURCE_OPERATIONS = ['discover', 'fetch', 'store', 'extractFacts', 'aiProcessing', 'publishSummary', 'reproduceOriginal', 'useMedia'] as const;
+export type SourceOperation = (typeof SOURCE_OPERATIONS)[number];
+export const OPERATION_STATUSES = ['unknown', 'allowed', 'denied'] as const;
+export type OperationStatus = (typeof OPERATION_STATUSES)[number];
+export const ACQUISITION_METHODS = ['explicit_urls', 'bulk_archive', 'feed', 'listing_page', 'api', 'none'] as const;
+export type AcquisitionMethod = (typeof ACQUISITION_METHODS)[number];
+
+export type SourceAccess = {
+  /** Official government publisher (a Phase B prerequisite, not a permission). */
+  officialGovernment: boolean;
+  operations: Partial<Record<SourceOperation, OperationStatus>>;
+  /** How documents may be acquired once `fetch` is allowed; `explicit_urls` = only owner-supplied URLs. */
+  acquisition: AcquisitionMethod;
+  /** Minimum pause between two requests to this source (politeness / rate limit). */
+  minIntervalMs: number;
+  /** What robots.txt said when last checked (informational; never a grant). */
+  robots?: string;
+  basis?: string[];
+  reviewedBy?: string;
+  reviewedAt?: string;
+  findings?: string;
+};
+
+/** Provider name for items produced by official-report adapters (FWC, sheriff newsrooms, …). */
+export const OFFICIAL_PROVIDER = 'official_report';
+
+/** Operations a public question built from an official report depends on (fetching, extracting facts, publishing our own summary). */
+export const OFFICIAL_PUBLISH_OPERATIONS: readonly SourceOperation[] = ['fetch', 'extractFacts', 'publishSummary'];
+/** Operations unattended (cron/Workflow) acquisition depends on. */
+export const OFFICIAL_AUTOMATION_OPERATIONS: readonly SourceOperation[] = ['discover', 'fetch', 'extractFacts'];
+
+/** Effective status of one operation. Blocked sources deny everything; missing = unknown. */
+export function operationStatus(src: Pick<SourcePolicy, 'licenseStatus' | 'access'>, op: SourceOperation): OperationStatus {
+  if (src.licenseStatus === 'blocked') return 'denied';
+  return src.access?.operations[op] ?? 'unknown';
+}
+
+/** Problems (code: detail) for operations that are not explicitly allowed. Empty = all allowed. */
+export function accessOperationProblems(src: Pick<SourcePolicy, 'id' | 'licenseStatus' | 'access'>, ops: readonly SourceOperation[]): string[] {
+  if (!src.access) return [`SOURCE_ACCESS_UNREVIEWED: ${src.id} has no per-operation access review`];
+  const out: string[] = [];
+  for (const op of ops) {
+    const st = operationStatus(src, op);
+    if (st === 'denied') out.push(`SOURCE_OPERATION_DENIED: ${op} is denied for ${src.id}`);
+    else if (st !== 'allowed') out.push(`SOURCE_OPERATION_UNRESOLVED: ${op} has not been cleared for ${src.id}`);
+  }
+  return out;
+}
+
+/** Host + path match honoring `pathScopes` (a scoped host only matches under its listed paths). */
+export function urlBelongsToSource(url: URL, src: Pick<SourcePolicy, 'hosts' | 'pathScopes'>): boolean {
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  if (!hostMatches(host, src.hosts)) return false;
+  const scopes = (src.pathScopes ?? []).map((sc) => ({ host: sc.slice(0, sc.indexOf('/')), path: sc.slice(sc.indexOf('/')) }));
+  const forHost = scopes.filter((sc) => host === sc.host);
+  return forHost.length === 0 || forHost.some((sc) => url.pathname.startsWith(sc.path));
+}
+
+/** Hosts this source shares with others (only reachable through path scopes). */
+export function scopedHosts(src: Pick<SourcePolicy, 'pathScopes'>): string[] {
+  return (src.pathScopes ?? []).map((sc) => sc.slice(0, sc.indexOf('/')));
+}
 
 export const FEED_ACCESS_STATUSES = ['unreviewed', 'allowed', 'denied'] as const;
 export type FeedAccessStatus = (typeof FEED_ACCESS_STATUSES)[number];

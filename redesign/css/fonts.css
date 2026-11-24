@@ -1,0 +1,7 @@
+/* Fonts (all SIL Open Font License): Press Start 2P (display), Silkscreen (labels), Rubik (reading).
+   Option A, Google Fonts: */
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=Rubik:wght@400;500;600;700&display=swap");
+/* Option B, self-host with npm:
+   npm i @fontsource/press-start-2p @fontsource/silkscreen @fontsource/rubik
+   then in main.tsx: import "@fontsource/press-start-2p"; import "@fontsource/silkscreen"; import "@fontsource/silkscreen/700.css"; import "@fontsource/rubik/400.css"; import "@fontsource/rubik/600.css";
+   and delete the @import above. */

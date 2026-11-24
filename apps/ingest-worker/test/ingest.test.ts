@@ -150,6 +150,13 @@ describe('ingestion workflow', () => {
     expect(summary.status).toBe('ok');
     // 5 new mission pages + 2 Florida (the tragedy is prefilter-rejected but still recorded).
     expect(summary.discovered).toBe(8);
+    // Official-report sources were not fetched, and the run says so (status "ok" ≠ "official content ingested").
+    expect(summary.official.map((o) => [o.sourceId, o.status])).toEqual([
+      ['publisher:myfwc.com', 'skipped'],
+      ['publisher:flaglersheriff.com', 'skipped'],
+    ]);
+    expect(events.filter((e) => e.name === 'ingest.official_skipped')).toHaveLength(2);
+    expect(world.calls.some((c) => /govdelivery|flaglersheriff/.test(c))).toBe(false);
     expect(world.calls.filter((c) => c.includes('/api.php')).length).toBe(2 + 5); // members + resolve + 5 pages (1003 skipped)
     expect(api.imports).toHaveLength(1);
     const { items, run, checkpoints } = api.imports[0]!.body;

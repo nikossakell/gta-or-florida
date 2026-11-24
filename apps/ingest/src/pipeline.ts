@@ -12,8 +12,8 @@
  * Nothing here can approve anything: the Worker decides, under the owner's policy.
  */
 import { createHash } from 'node:crypto';
-import { cleanText, draftPlayTitle, type AiTrace, type GtaGame, type ImportItem, type LinkCheck } from '@gof/core';
-import { sourceForHost, sourceById } from '@gof/config';
+import { cleanText, draftPlayTitle, type AiTrace, type GtaGame, type ImportItem, type IncidentFacts, type LinkCheck } from '@gof/core';
+import { sourceForUrl, sourceById } from '@gof/config';
 import { classify, mapLimit, type AiProvider, type Budget } from './classify.ts';
 import { createRunDeduper, type ExistingTitle } from './deduplicate.ts';
 export type { ExistingTitle };
@@ -22,7 +22,7 @@ import type { WorkerClient } from './import.ts';
 
 export type Discovered = {
   kind: 'FLORIDA_NEWS' | 'GTA_CANON';
-  provider: 'gdelt' | 'rss' | 'grandtheftwiki' | 'manual' | 'doj' | 'floridaman_dataset';
+  provider: 'gdelt' | 'rss' | 'grandtheftwiki' | 'manual' | 'doj' | 'floridaman_dataset' | 'official_report';
   providerKey: string | null;
   title: string;
   originalUrl: string;
@@ -41,6 +41,11 @@ export type Discovered = {
   prefilter: FilterResult;
   /** false: the source's terms were reviewed for metadata only — no Workers AI, human review decides. */
   aiAllowed?: boolean;
+  /** Official reports: one document holds many incidents, so fuzzy dedupe compares this, not the document title. */
+  dedupeTitle?: string;
+  /** Official reports: structured facts (no source text) and a validated facts-first draft. */
+  facts?: IncidentFacts;
+  draft?: { playTitle: string; explanation: string } | null;
 };
 
 export type PipelineStats = {
@@ -84,8 +89,8 @@ export function incidentKeyFor(d: Discovered): string {
 }
 
 function sourceFor(d: Discovered) {
-  if (d.kind === 'GTA_CANON') return sourceById('grandtheftwiki') ?? sourceForHost(new URL(d.canonicalUrl).hostname);
-  return sourceForHost(new URL(d.canonicalUrl).hostname);
+  if (d.kind === 'GTA_CANON') return sourceById('grandtheftwiki') ?? sourceForUrl(d.canonicalUrl);
+  return sourceForUrl(d.canonicalUrl);
 }
 
 export type Planned = {
@@ -151,7 +156,8 @@ export function planCandidates(
   const planned: Planned[] = [];
   for (const d of unique) {
     const deduper = dedupers[d.kind];
-    const v = deduper.check({ kind: d.kind, title: d.title, canonicalUrl: d.canonicalUrl, providerKey: d.providerKey, seenAt: d.publishedAt ?? d.seenAt });
+    const dedupeTitle = d.dedupeTitle ?? d.title;
+    const v = deduper.check({ kind: d.kind, title: dedupeTitle, canonicalUrl: d.canonicalUrl, providerKey: d.providerKey, seenAt: d.publishedAt ?? d.seenAt });
     if (v.kind === 'duplicate') {
       stats.duplicates++;
       continue;
@@ -165,7 +171,7 @@ export function planCandidates(
       p.dupOf = { key: v.incidentKey, similarity: v.similarity };
       stats.flaggedForReview++;
     }
-    deduper.add({ incidentKey: p.attachTo ?? incidentKey, title: d.title, canonicalUrl: d.canonicalUrl, providerKey: d.providerKey, seenAt: d.publishedAt ?? d.seenAt });
+    deduper.add({ incidentKey: p.attachTo ?? incidentKey, title: dedupeTitle, canonicalUrl: d.canonicalUrl, providerKey: d.providerKey, seenAt: d.publishedAt ?? d.seenAt });
     if (d.prefilter.decision === 'reject') {
       stats.prefilterRejected++;
       for (const r of d.prefilter.reasonCodes) stats.rejectReasons[r] = (stats.rejectReasons[r] ?? 0) + 1;
@@ -246,12 +252,14 @@ export function buildImportItem(p: Planned): ImportItem {
     },
     question: {
       // AI drafts are suggestions for the reviewer; the rule-based draft is the fallback.
-      playTitleDraft: (p.playTitle ?? (draftPlayTitle(d.title) || d.title)).slice(0, 240),
-      explanationDraft: (p.explanation ?? '').slice(0, 800),
+      // Official reports: the facts-first draft (or, without one, a neutral descriptor a reviewer must replace).
+      playTitleDraft: (p.playTitle ?? d.draft?.playTitle ?? (d.facts ? cleanText(d.dedupeTitle ?? d.title, 240) : draftPlayTitle(d.title) || d.title)).slice(0, 240),
+      explanationDraft: (p.explanation ?? d.draft?.explanation ?? '').slice(0, 800),
       difficulty: 2,
     },
     ai: p.ai,
     prefilter: d.prefilter,
+    ...(d.facts ? { facts: d.facts } : {}),
   };
 }
 

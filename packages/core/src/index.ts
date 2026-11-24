@@ -13,3 +13,4 @@ export * from './policy.ts';
 export * from './ai.ts';
 export * from './admin-contract.ts';
 export * from './round-plan.ts';
+export * from './facts.ts';
