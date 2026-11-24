@@ -1,0 +1,329 @@
+/*
+ * Daily Drive styles, derived from redesign/css/{tokens,animations,components}.css.
+ *
+ * Scoping: every rule lives under `.dd`, a class that src/daily-drive/boot.ts puts on <html>
+ * only when the VITE_DAILY_DRIVE flag is on, so nothing here touches the legacy UI.
+ *  - Kit element rules (button, a, kbd, focus) sit in Tailwind's `base` layer, so Tailwind
+ *    utilities on legacy screens still win over them.
+ *  - Kit components sit in the `components` layer.
+ *  - Keyframes are prefixed `dd-`; the play card is `.card.panel`, because the legacy UI
+ *    already uses `.card`.
+ *  - The unlayered block at the end is the light re-skin of the legacy screens (archive,
+ *    about, loading/error/empty states).
+ */
+
+/* ---------- keyframes (redesign/css/animations.css) ---------- */
+@keyframes dd-glow{0%{outline:4px solid var(--cream);outline-offset:0}50%{outline:4px solid var(--cream);outline-offset:9px}100%{outline:4px solid transparent;outline-offset:14px}}
+@keyframes dd-shake{0%,100%{transform:translateX(0)}17%{transform:translateX(-8px)}34%{transform:translateX(7px)}50%{transform:translateX(-5px)}67%{transform:translateX(4px)}84%{transform:translateX(-2px)}}
+@keyframes dd-flash{50%{box-shadow:inset 0 0 0 4px var(--orange)}}
+@keyframes dd-flame{50%{width:9px;top:52%}}
+@keyframes dd-hop{50%{transform:translateY(-6px)}}
+@keyframes dd-blink{50%{opacity:.25}}
+@keyframes dd-cardin{from{opacity:0;transform:translateX(24px)}}
+@keyframes dd-rise{from{opacity:0;transform:translateY(16px)}}
+@keyframes dd-pop{0%{transform:translateX(-50%) scale(.5)}12%{transform:translateX(-50%) scale(1.12)}22%{transform:translateX(-50%) scale(1)}85%{opacity:1}100%{opacity:0}}
+@keyframes dd-fly{to{transform:translate(var(--dx),var(--dy));opacity:0}}
+@keyframes dd-tick{50%{transform:scale(1.25)}}
+@keyframes dd-card{from{opacity:0;transform:translateY(40px) rotate(-6deg)}}
+/* ---------- tokens + page (redesign/css/tokens.css, components.css head) ---------- */
+@layer base {
+  .dd {
+    color-scheme: dark;
+    background: var(--night);
+    --night: #140f2b;
+    --plum: #221640;
+    --plum2: #2e1f55;
+    --line: #3d2b6b;
+    --pink: #ff5fa2;
+    --pinkD: #b8236b;
+    --teal: #2de2c8;
+    --tealD: #0e8f7e;
+    --orange: #ff8a3d;
+    --orangeD: #b9541c;
+    --yellow: #ffd25a;
+    --yellowD: #b8860b;
+    --cream: #fff1d6;
+    --muted: #c9bbe8;
+    --dim: #a797d2;
+    --px: 'Press Start 2P', ui-monospace, monospace;
+    --lab: 'Silkscreen', ui-monospace, monospace;
+    --read: 'Rubik', system-ui, sans-serif;
+    --notch: polygon(6px 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px, 100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px), 0 6px, 3px 6px, 3px 3px, 6px 3px);
+
+    /* Light re-skin: point the legacy Tailwind theme at the Daily Drive palette and fonts. */
+    --color-night: var(--night);
+    --color-night-2: #1a1134;
+    --color-card: var(--plum);
+    --color-card-2: var(--plum2);
+    --color-line: var(--line);
+    --color-pink: var(--pink);
+    --color-pink-deep: var(--pinkD);
+    --color-teal: var(--teal);
+    --color-teal-deep: var(--tealD);
+    --color-sun: var(--yellow);
+    --color-ember: var(--orange);
+    --color-cream: var(--cream);
+    --color-muted: var(--muted);
+    --color-dim: var(--dim);
+    --color-ink: var(--night);
+    --font-sans: var(--read);
+    --font-display: var(--px);
+  }
+  .dd *{box-sizing:border-box;min-width:0}
+  .dd body{margin:0;background-color:var(--night);color:var(--cream);font:16px/1.5 var(--read);overflow-x:clip;min-height:100dvh;
+  background-image:radial-gradient(#FFF1D622 1px,transparent 1.4px),radial-gradient(#2DE2C81c 1px,transparent 1.4px);background-size:34px 34px,53px 53px;background-position:0 0,17px 23px}
+  .dd body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:90;background:repeating-linear-gradient(to bottom,rgba(0,0,0,.10) 0 1px,transparent 1px 3px)}
+  .dd [hidden]{display:none!important}
+  .dd button{font:inherit;color:inherit;cursor:pointer}
+  .dd a{color:var(--teal)}
+  .dd :focus-visible{outline:3px dashed var(--yellow);outline-offset:3px;border-radius:0}
+  /* Headings focused by script for screen readers (tabindex=-1) get no ring, as in the legacy UI. */
+  .dd [tabindex="-1"]:focus{outline:none}
+  .dd kbd{font-family:var(--lab);font-size:11px;border:2px solid currentColor;padding:0 5px;line-height:16px;display:inline-block}
+}
+
+/* ---------- components (redesign/css/components.css) ---------- */
+@layer components {
+.dd {
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.sprite,.px{image-rendering:pixelated;image-rendering:crisp-edges}
+.lab{font-family:var(--lab)}
+.wrap{max-width:760px;margin:0 auto;padding:10px 16px 24px}
+.wrap.wide{max-width:1120px}
+.panel{background:var(--plum);clip-path:var(--notch);box-shadow:inset 0 0 0 3px var(--line)}
+.chip{display:inline-block;font-family:var(--lab);font-size:12px;background:var(--plum);border:2px solid var(--line);padding:2px 8px;color:var(--yellow)}
+
+/* ---------- arcade buttons ---------- */
+.arcade{--c:var(--yellow);--cd:var(--yellowD);position:relative;min-height:88px;width:100%;border:3px solid var(--night);background:var(--c);color:var(--night);
+box-shadow:inset -5px -5px 0 rgba(0,0,0,.22),inset 5px 5px 0 rgba(255,255,255,.38),0 7px 0 var(--cd),0 7px 0 3px var(--night);
+display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:10px;transition:transform 70ms steps(1),box-shadow 70ms steps(1),filter 70ms steps(1);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.arcade .big{font-family:var(--px);font-size:clamp(15px,4.4vw,21px);line-height:1.2}
+.arcade .key{font-family:var(--lab);font-size:12px;display:inline-flex;gap:6px;align-items:center}
+.arcade:hover:not([disabled]),.arcade.demo-hover{filter:brightness(1.08);transform:translateY(-2px);box-shadow:inset -5px -5px 0 rgba(0,0,0,.22),inset 5px 5px 0 rgba(255,255,255,.38),0 9px 0 var(--cd),0 9px 0 3px var(--night)}
+.arcade:active:not([disabled]),.arcade.press{transform:translateY(5px);box-shadow:inset 5px 5px 0 rgba(0,0,0,.22),inset -3px -3px 0 rgba(255,255,255,.2),0 2px 0 var(--cd),0 2px 0 3px var(--night)}
+.arcade[disabled]{cursor:default;filter:saturate(.45) brightness(.7)}
+.arcade.gta{--c:var(--pink);--cd:var(--pinkD)}
+.arcade.fl{--c:var(--teal);--cd:var(--tealD)}
+.arcade.glow{filter:none!important;animation:dd-glow .7s steps(7)}
+
+.btn2{min-height:48px;padding:0 16px;background:var(--plum);border:3px solid var(--line);font-family:var(--lab);font-size:13px;color:var(--cream)}
+.btn2:hover{border-color:var(--teal)}
+.shake{animation:dd-shake .36s steps(6)}
+
+.flash{animation:dd-flash .4s steps(2)}
+
+/* ---------- road map ---------- */
+.map{position:relative;height:96px;overflow:hidden;background:var(--night);border:3px solid var(--line);margin-top:10px}
+.map.big{height:150px;margin-top:0}
+@media(min-width:700px){.map{height:128px}.map.big{height:192px}}
+.map .layer{position:absolute;left:0;top:0;will-change:transform}
+.map canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges}
+.carwrap{position:absolute;left:0;top:0;will-change:transform;z-index:3}
+.carwrap img{display:block;image-rendering:pixelated}
+.flame{position:absolute;right:100%;top:46%;width:14px;height:8px;display:none;background:linear-gradient(90deg,transparent 0 25%,var(--yellow) 25% 55%,var(--orange) 55% 80%,var(--pink) 80%);animation:dd-flame .16s steps(2) infinite}
+.carwrap.turbo .flame{display:block}
+
+.cp{position:absolute;z-index:2;display:grid;place-items:center;color:var(--night)}
+.cp svg{width:70%;height:70%}
+.cp.pending{border:2px dashed var(--cream);border-radius:50%;background:rgba(20,15,43,.6);color:var(--cream);font-family:var(--lab);font-size:9px}
+.cp.ok{background:var(--teal);box-shadow:0 0 0 2px var(--night)}
+.cp.bad{background:var(--orange);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.cp.bad svg{margin-top:30%;width:55%;height:55%}
+.tag{position:absolute;z-index:2;font-family:var(--lab);font-size:10px;line-height:1.3;background:rgba(20,15,43,.78);color:var(--cream);padding:1px 5px;white-space:nowrap;top:3px}
+.sign{position:absolute;z-index:4;font-family:var(--lab);font-size:10px;background:var(--orange);color:var(--night);padding:2px 6px;white-space:nowrap;box-shadow:0 0 0 2px var(--night)}
+.route{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+.route li{display:flex;align-items:center;gap:5px;font-family:var(--lab);font-size:10px;color:var(--dim);background:var(--plum);padding:4px 5px;border-bottom:3px solid var(--line);overflow:hidden;white-space:nowrap}
+.route li.now{color:var(--cream);border-color:var(--yellow)}
+.route li.ok{color:var(--cream);border-color:var(--teal)}
+.route li.bad{color:var(--cream);border-color:var(--orange)}
+.shape{width:14px;height:14px;flex:none;display:grid;place-items:center;color:var(--night)}
+.shape svg{width:10px;height:10px}
+.shape.ok{background:var(--teal)}
+.shape.bad{background:var(--orange);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.shape.bad svg{width:7px;height:7px;margin-top:5px}
+.shape.todo,.shape.now{border:2px dashed currentColor;border-radius:50%;color:inherit}
+.shape.now{border-style:solid;background:var(--yellow);border-color:var(--yellow)}
+@media(max-width:420px){.route li{font-size:9px;gap:3px;padding:4px 3px}.route .nm{overflow:hidden;text-overflow:clip}}
+
+/* ---------- mascot + bubble ---------- */
+.mascot-sm{width:64px;height:64px;flex:none}
+.mascot-lg{width:128px;height:128px;flex:none}
+.hop{animation:dd-hop .3s steps(3)}
+
+.bubble{position:relative;background:var(--cream);color:var(--night);font:500 14px/1.35 var(--read);padding:7px 10px;clip-path:var(--notch)}
+.bubble.sm{font-size:13px;max-width:170px}
+
+/* ---------- landing ---------- */
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;min-height:48px}
+.topbar a{font-family:var(--lab);font-size:13px;color:var(--teal);padding:12px 0}
+.hero{display:grid;gap:18px 40px;grid-template-areas:"copy" "pic" "cta";margin-top:8px}
+@media(min-width:880px){.hero{grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);grid-template-areas:"copy pic" "cta pic";align-items:start}}
+.hero-copy{grid-area:copy}.hero-pic{grid-area:pic}.hero-cta{grid-area:cta;display:grid;gap:16px}
+.logo{font-family:var(--px);font-weight:400;font-size:clamp(34px,8.5vw,60px);line-height:1.12;color:var(--pink);margin:8px 0 14px;text-shadow:4px 4px 0 var(--tealD),8px 8px 0 #0A0718}
+.logo span{display:block;color:var(--teal);text-shadow:4px 4px 0 var(--pinkD),8px 8px 0 #0A0718}
+.pitch{font-size:17px;color:var(--muted);max-width:46ch;margin:0}
+.pitch b{color:var(--cream);font-weight:600}
+.meet{display:flex;align-items:flex-end;gap:12px;margin-top:14px}
+.meet .bubble{margin-bottom:24px;max-width:340px}
+.steps{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.steps li{background:var(--plum);border-bottom:3px solid var(--line);padding:10px;font-size:14px;color:var(--muted);line-height:1.35}
+.steps b{display:block;font-family:var(--px);font-size:13px;color:var(--yellow);margin-bottom:6px}
+.stats{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:22px;font-family:var(--lab);font-size:13px;color:var(--muted)}
+.stats strong{color:var(--yellow);font-weight:700}
+.foot{margin-top:28px;font-size:13px;color:var(--dim)}
+@media(max-width:600px){.steps{grid-template-columns:1fr}.steps li{display:flex;gap:10px;align-items:center}.steps b{margin:0}}
+
+/* ---------- play ---------- */
+.play .wrap{min-height:100dvh;display:flex;flex-direction:column}
+.hud{display:flex;align-items:center;gap:10px;min-height:56px}
+.iconbtn{width:44px;height:44px;flex:none;background:var(--plum);border:3px solid var(--line);display:grid;place-items:center;padding:0}
+.iconbtn svg{width:16px;height:16px}
+.hud-mid{flex:1;line-height:1.3}
+.hud-mid .t1{font-family:var(--px);font-size:11px;color:var(--yellow)}
+.hud-mid .t2{font-family:var(--lab);font-size:12px;color:var(--muted)}
+.timer{min-width:96px;padding:5px 9px 6px;background:var(--plum);border:3px solid var(--teal);text-align:center;color:var(--teal)}
+.timer b{display:block;font-family:var(--px);font-size:24px;line-height:1.15;font-weight:400}
+.tbar{display:flex;gap:2px;margin-top:4px}
+.tbar i{flex:1;height:5px;background:currentColor}
+.tbar i.off{background:var(--line)}
+.tstate{font-family:var(--lab);font-size:10px;margin-top:3px;color:var(--muted)}
+.timer.urgent{border-color:var(--orange);color:var(--orange)}
+.timer.urgent b{animation:dd-blink 1s steps(2) infinite}
+.timer.urgent .tstate{color:var(--orange)}
+.timer.paused{border-color:var(--line);color:var(--muted)}
+
+.stage{flex:1;display:flex;flex-direction:column;gap:14px;padding-top:12px}
+.card.panel{padding:16px 18px 20px;min-height:168px;flex:1 1 auto;display:flex;flex-direction:column}
+.card.panel .headline{margin:auto 0;padding:10px 0}
+.card.panel.out{opacity:0;transform:translateX(-24px);transition:opacity .16s steps(4),transform .16s steps(4)}
+.card.panel.in{animation:dd-cardin .22s steps(5)}
+
+.meta{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.qlabel{font-family:var(--lab);font-size:12px;color:var(--dim);padding-top:4px;white-space:nowrap}
+.qlabel b{color:var(--yellow);font-weight:700}
+.buddy{display:flex;align-items:flex-end;gap:6px;margin:-6px -6px 0 0}
+.buddy .bubble{margin-bottom:22px}
+.headline{font:600 clamp(20px,4.8vw,27px)/1.3 var(--read);margin:6px 0 0;text-wrap:pretty}
+.answers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:auto;padding-bottom:10px}
+.hint{grid-column:1/-1;text-align:center;font-family:var(--lab);font-size:11px;color:var(--dim);margin:0}
+.reveal{padding:16px 18px 18px;margin-top:auto;margin-bottom:10px}
+.reveal.in{animation:dd-rise .26s steps(4)}
+
+.verdict{display:flex;align-items:center;gap:12px}
+.vicon{width:46px;height:46px;flex:none;display:grid;place-items:center;color:var(--night)}
+.vicon svg{width:26px;height:26px}
+.vicon.ok{background:var(--teal)}
+.vicon.bad{background:var(--orange);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.vicon.bad svg{width:18px;height:18px;margin-top:14px}
+.vword{font-family:var(--px);font-size:clamp(15px,4.4vw,19px);margin:0 0 4px}
+.vword.ok{color:var(--teal)}.vword.bad{color:var(--orange)}
+.vsub{margin:0;font-size:14px;color:var(--muted)}
+.vsub b{font-family:var(--lab);font-weight:700;padding:0 5px;color:var(--night)}
+.vsub b.gta{background:var(--pink)}.vsub b.florida{background:var(--teal)}
+.explain{margin:12px 0 6px;font-size:16px}
+.source{margin:0 0 14px;font-size:13px;color:var(--dim)}
+.source span{font-family:var(--lab);font-size:10px;color:var(--night);background:var(--dim);padding:0 4px;margin-left:4px}
+.arcade.next{min-height:62px;flex-direction:row;gap:14px}
+.banner{position:fixed;left:50%;top:32%;z-index:80;transform:translateX(-50%);font-family:var(--px);font-size:clamp(15px,5vw,24px);line-height:1.3;text-align:center;color:var(--night);background:var(--yellow);padding:14px 18px;box-shadow:0 0 0 4px var(--night),0 0 0 8px var(--pink),0 0 0 12px var(--night);white-space:nowrap;animation:dd-pop 1.7s steps(10) forwards;pointer-events:none}
+.banner.timeup{background:var(--orange);box-shadow:0 0 0 4px var(--night),0 0 0 8px var(--cream),0 0 0 12px var(--night)}
+
+.bit{position:fixed;z-index:81;width:7px;height:7px;pointer-events:none;animation:dd-fly .62s steps(6) forwards}
+
+/* ---------- results ---------- */
+.scorebox{text-align:center;margin:6px 0 18px}
+.scorebox .lab{margin:0;color:var(--muted);font-size:13px}
+.bigscore{font-family:var(--px);font-size:clamp(44px,12vw,72px);line-height:1.1;margin:6px 0 0;color:var(--yellow);text-shadow:5px 5px 0 var(--pinkD),10px 10px 0 #0A0718}
+.bigscore .tick{display:inline-block;animation:dd-tick .2s steps(2)}
+
+.postcard{background:var(--cream);color:var(--night);padding:12px;display:grid;gap:14px;box-shadow:0 0 0 4px var(--night),0 0 0 8px var(--pink),10px 14px 0 8px rgba(0,0,0,.45);transform:rotate(-1deg);margin:8px 8px 0}
+.postcard.enter{animation:dd-card 0.6s steps(6)}
+
+@media(min-width:720px){.postcard{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}}
+.art{position:relative;align-self:start}
+.art canvas{display:block;width:100%;height:auto;aspect-ratio:192/108;box-shadow:0 0 0 3px var(--night)}
+.greet{position:absolute;left:8px;top:8px;margin:0;font-family:var(--px);font-size:clamp(8px,2vw,10px);line-height:1.6;color:var(--cream);text-shadow:2px 2px 0 var(--night)}
+.greet span{display:block;font-size:clamp(11px,3vw,15px);color:var(--yellow);text-shadow:2px 2px 0 var(--night)}
+.pc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.stamp{background:#BFF5EA;padding:6px;outline:3px dotted var(--night);outline-offset:-1px;box-shadow:0 0 0 5px var(--cream),0 0 0 7px var(--night)}
+.stamp img{width:72px;height:72px;display:block}
+.postmark{width:84px;height:84px;border:3px solid var(--pinkD);border-radius:50%;display:grid;place-items:center;text-align:center;font-size:10px;line-height:1.3;color:var(--pinkD);transform:rotate(12deg)}
+.pc-title{font-family:var(--px);font-weight:400;font-size:clamp(14px,3.6vw,18px);line-height:1.35;margin:4px 0 0;color:var(--pinkD)}
+.pc-stats{display:flex;gap:22px;margin:0}
+.pc-stats dt{font-family:var(--lab);font-size:11px;color:#5B4A7A}
+.pc-stats dd{margin:0;font-family:var(--px);font-size:18px}
+.pc-hist{list-style:none;padding:0;margin:0;display:flex;gap:6px}
+.pc-hist li{display:flex;flex-direction:column;align-items:center;gap:3px;font-family:var(--lab);font-size:10px}
+.pc-hist .shape{width:22px;height:22px}
+.pc-hist .shape svg{width:14px;height:14px}
+.pc-hist .shape.bad svg{width:10px;height:10px;margin-top:8px}
+.pc-msg{margin:0;font-size:15px;line-height:1.45}
+.actions{display:grid;gap:10px;margin:30px 0 0}
+.arcade.share{--c:var(--pink);--cd:var(--pinkD);min-height:70px}
+.copystat{margin:0;min-height:18px;font-size:12px;color:var(--teal);text-align:center}
+.sharetxt{margin:0;padding:12px 14px;background:#0B0718;border:2px dashed var(--line);font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;color:var(--muted);white-space:pre-wrap;user-select:all}
+.nextday{text-align:center;font-size:13px;color:var(--muted);margin:4px 0}
+.nextday .countdown{color:var(--yellow)}
+.row2{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.histbox{padding:16px 18px;margin-top:22px}
+.histbox h3{font-family:var(--px);font-weight:400;font-size:13px;color:var(--yellow);margin:0 0 10px}
+.histbox ol{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.histbox li{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.4}
+.histbox li .shape{margin-top:2px}
+.histbox small{display:block;font-family:var(--lab);font-size:11px;color:var(--dim);margin-top:2px}
+
+}
+}
+
+/* ---------- reduced motion (OS setting, or body.rm for an in-app toggle) ---------- */
+.dd body.rm *,.dd body.rm *::before,.dd body.rm *::after{animation:none!important;transition:none!important}
+@media (prefers-reduced-motion: reduce){.dd *,.dd *::before,.dd *::after{animation:none!important;transition:none!important}}
+
+/* ---------- Daily Drive additions (not in the kit) ---------- */
+@layer components {
+.dd {
+  /* Links styled as kit buttons (Start, route links). */
+  a.arcade,a.btn2,a.iconbtn{text-decoration:none;color:var(--night)}
+  a.btn2,a.iconbtn{color:var(--cream);display:inline-grid;place-items:center}
+  a.btn2{display:inline-flex;align-items:center;justify-content:center}
+  .arcade.go{min-height:76px}
+  /* Long labels ("NEXT HEADLINE ▶") wrap the Enter hint below instead of clipping it on phones. */
+  .arcade.next{flex-wrap:wrap;row-gap:4px;column-gap:14px;text-align:center}
+  .hud .iconbtn + .hud-mid{margin-left:2px}
+  .gus-slot{display:inline-block}
+  .stats .note{color:var(--dim)}
+  .foot a{color:var(--muted)}
+  .meta-status{min-height:18px;margin:0;text-align:center;font-family:var(--lab);font-size:11px;color:var(--dim)}
+  .meta-status.err{color:var(--orange);font-family:var(--read);font-size:14px;font-weight:600}
+  .reveal .err,.actions .err{margin:10px 0 0;color:var(--orange);font-weight:600;text-align:center}
+  .orig{margin:10px 0 0;font-size:14px;color:var(--muted)}
+  .orig .lab{display:block;font-size:10px;color:var(--dim)}
+  .lore{margin:10px 0 0;font-size:14px;color:var(--cream);font-weight:600}
+  .source a{color:var(--teal);font-weight:600}
+  .source.none{border:2px dashed var(--line);padding:6px 8px}
+  .timeup-panel{padding:16px 18px 18px;margin-top:auto;margin-bottom:10px;text-align:center}
+  .timeup-panel h2{font-family:var(--px);font-weight:400;font-size:clamp(15px,4.4vw,19px);color:var(--orange);margin:0 0 8px}
+  .timeup-panel p{margin:0 0 12px;color:var(--muted)}
+  .pc-stats .sub{font-family:var(--lab);font-size:10px;color:#5B4A7A;display:block}
+  .pc-note{margin:0;font-size:12px;color:#5B4A7A}
+  .sharetxt{width:100%;resize:none;display:block}
+  .share-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:stretch}
+  .share-row .btn2{min-height:70px}
+  .histbox details{margin-top:6px}
+  .histbox summary{cursor:pointer;font-family:var(--lab);font-size:11px;color:var(--teal);min-height:28px;display:flex;align-items:center}
+  .histbox .explain{font-size:14px;margin:6px 0}
+  .histbox .source{margin:0}
+  .postcard[data-hidden]{visibility:hidden}
+  .sample-note{margin-top:26px}
+  .burst{position:fixed;inset:0;pointer-events:none;z-index:81}
+}
+}
+
+/* ---------- light re-skin of the legacy screens (unlayered: beats Tailwind utilities) ---------- */
+.dd .font-display{font-family:var(--px);font-weight:400;font-size:clamp(18px,5.2vw,28px);line-height:1.35;letter-spacing:0}
+.dd header a .font-display{font-size:clamp(11px,3.2vw,15px)}
+.dd .label-wide,.dd .btn-wide{font-family:var(--lab);font-stretch:normal;letter-spacing:.03em}
+.dd .card{background:var(--plum);border:0;border-radius:0;clip-path:var(--notch);box-shadow:inset 0 0 0 3px var(--line)}
+.dd [class*="rounded"]{border-radius:0}
+
+/* headings used where the kit had h3 */
+@layer components{.dd .histbox h2{font-family:var(--px);font-weight:400;font-size:13px;color:var(--yellow);margin:0 0 10px}}

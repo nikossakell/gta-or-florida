@@ -7,6 +7,8 @@ import { CalendarIcon, PlayIcon, RetryIcon } from '../components/Icons.tsx';
 import { Badge, Button, ButtonLink, Disclaimer, IconLink, Wordmark } from '../components/ui.tsx';
 import { numberWord, shortDay } from '../lib/format.ts';
 import { getProgress, getResult } from '../lib/storage.ts';
+import { DAILY_DRIVE } from '../daily-drive/flag.ts';
+import { DriveLanding } from '../daily-drive/screens/DriveLanding.tsx';
 
 const STEPS = [
   { n: 1, text: 'Read the headline', ring: 'border-sun text-sun' },
@@ -93,6 +95,10 @@ function TodayCta() {
 }
 
 export function Landing() {
+  return DAILY_DRIVE ? <DriveLanding /> : <LegacyLanding />;
+}
+
+function LegacyLanding() {
   const utcDay = useUtcDay();
   const today = useQuery(challengeQuery('today', utcDay));
   const count = today.data?.questions.length ?? 5;

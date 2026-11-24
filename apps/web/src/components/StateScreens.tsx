@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError } from '../api/client.ts';
 import { OfflineGator, SleepingGator } from './Gator.tsx';
 import { RetryIcon } from './Icons.tsx';
+import { DAILY_DRIVE } from '../daily-drive/flag.ts';
+import { Gus } from '../daily-drive/components/Gus.tsx';
 import { Button, ButtonLink } from './ui.tsx';
 
 export function useOnline(): boolean {
@@ -45,7 +47,7 @@ export function ErrorState({
       : 'You appear to be offline. Reconnect, then try again.');
   return (
     <section className="flex flex-col items-center pt-6 text-center" role="alert" aria-labelledby="error-title">
-      <OfflineGator className="w-64 max-w-full" />
+      {DAILY_DRIVE ? <Gus state="wrong" size="lg" decorative /> : <OfflineGator className="w-64 max-w-full" />}
       <h1 id="error-title" className="font-display text-sun mt-4 text-5xl leading-tight sm:text-6xl">
         {title}
       </h1>
@@ -70,7 +72,7 @@ export function ErrorState({
 export function EmptyState({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
     <section className="flex flex-col items-center pt-4 text-center" aria-labelledby="empty-title">
-      <SleepingGator className="w-64 max-w-full" />
+      {DAILY_DRIVE ? <Gus state="low" size="lg" decorative /> : <SleepingGator className="w-64 max-w-full" />}
       <h2 id="empty-title" className="font-display mt-4 text-4xl leading-tight sm:text-5xl">
         {title}
       </h2>

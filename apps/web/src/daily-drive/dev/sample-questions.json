@@ -1,0 +1,35 @@
+{
+  "_note": "SAMPLE DATA ONLY for visual testing. Never ship; the real game loads questions from its API.",
+  "questions": [
+    {
+      "answer": "florida",
+      "headline": "Deputies say a man rode a motorized beach cooler along a highway shoulder to “beat traffic” to a boat show.",
+      "explanation": "Real Florida. The cooler topped out at 12 mph before a deputy pulled it over. Nobody was hurt and the drinks survived.",
+      "source": "Example County Sheriff’s Office news release"
+    },
+    {
+      "answer": "gta",
+      "headline": "A driver steals an armored van, rams it until the guards bail out, then delivers it to a warehouse across town.",
+      "explanation": "GTA. This is a scripted mission objective: grab the van, shake the guards, drop it at the garage before the timer ends.",
+      "source": "Game mission reference"
+    },
+    {
+      "answer": "florida",
+      "headline": "A woman calls 911 to report that the iguana on her porch “looked at her disrespectfully.”",
+      "explanation": "Real Florida. Dispatch logged it as a wildlife concern and suggested she stay inside until the iguana moved on.",
+      "source": "Example Police Department call summary"
+    },
+    {
+      "answer": "gta",
+      "headline": "A film producer hires a getaway driver to steal a movie prop back from a rival studio’s lot before sunrise.",
+      "explanation": "GTA. A side-mission setup: lift the prop, lose studio security and get it back across town before dawn.",
+      "source": "Game mission reference"
+    },
+    {
+      "answer": "florida",
+      "headline": "A doorbell camera catches an alligator that appears to ring the bell at a suburban front door after midnight.",
+      "explanation": "Real Florida. Wildlife officers said the gator brushed the button while climbing the step. Nobody answered the door.",
+      "source": "Example wildlife agency news release"
+    }
+  ]
+}

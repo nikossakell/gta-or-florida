@@ -9,6 +9,8 @@ import { RevealView } from './RevealView.tsx';
 import { initialSession, sessionReducer, toProgress } from './session.ts';
 import { TimeUpView } from './TimeUpView.tsx';
 import { TopBar } from '../../components/ui.tsx';
+import { DAILY_DRIVE } from '../../daily-drive/flag.ts';
+import { DriveSession } from '../../daily-drive/screens/DriveSession.tsx';
 
 function friendly(error: unknown, fallback: string): string {
   if (error instanceof ApiError && (error.code === 'NETWORK' || error.code === 'FEED_TIMEOUT')) {
@@ -116,6 +118,23 @@ export function GameSession({
   const remainingMs = limitMs > 0 ? Math.max(0, limitMs - state.elapsedMs) : 0;
   const showTimeUp = state.phase === 'timeup' || (state.phase === 'finishing' && state.finishFrom === 'timeup');
   const showReveal = (state.phase === 'reveal' || (state.phase === 'finishing' && state.finishFrom === 'reveal')) && lastAnswer;
+
+  // Daily Drive redesign (presentation only): same state, same callbacks. 5-question rounds only.
+  if (DAILY_DRIVE && total === 5) {
+    return (
+      <DriveSession
+        label={practice ? 'REPLAY' : mode === 'daily' ? 'DAILY DRIVE' : 'ARCHIVE'}
+        number={challenge.number}
+        questions={challenge.questions}
+        state={state}
+        remainingMs={remainingMs}
+        limitMs={limitMs}
+        onChoose={choose}
+        onNext={next}
+        onFinish={finish}
+      />
+    );
+  }
 
   return (
     <>

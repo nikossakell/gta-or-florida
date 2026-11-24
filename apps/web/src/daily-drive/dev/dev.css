@@ -1,0 +1,15 @@
+/* Dev panel (redesign prototype's DEV PANEL). Development builds only. */
+.dd .devtab{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:95;writing-mode:vertical-rl;font-family:var(--lab);font-size:11px;background:var(--yellow);color:var(--night);border:0;padding:10px 3px;width:22px;min-height:64px}
+.dd .dev{position:fixed;z-index:96;right:0;top:0;bottom:0;width:min(360px,100%);background:#1A1134;border-left:3px solid var(--yellow);overflow:auto;padding:14px 14px 30px}
+.dd .dev header{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.dd .dev h2{font-family:var(--px);font-weight:400;font-size:12px;color:var(--yellow);margin:0}
+.dd .dev h3{font-family:var(--lab);font-size:12px;color:var(--muted);margin:16px 0 6px;font-weight:400}
+.dd .dev .row{display:flex;flex-wrap:wrap;gap:6px}
+.dd .dev .row button{min-height:40px;font-family:var(--lab);font-size:11px;background:var(--plum);border:2px solid var(--line);padding:0 9px}
+.dd .dev .row button:hover,.dd .dev .row button[aria-pressed=true]{border-color:var(--teal);color:var(--teal)}
+.dd .dev p{font-size:12px;color:var(--dim);margin:6px 0 0}
+.dd .dev-preview{position:fixed;inset:0;z-index:94;overflow:auto;background:var(--night)}
+.dd .dev-preview .dev-flag{position:fixed;right:8px;bottom:8px;z-index:95;font-family:var(--lab);font-size:10px;background:var(--yellow);color:var(--night);padding:2px 6px}
+.dd .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:12px}
+.dd .gallery figure{margin:0;background:var(--plum);border-bottom:3px solid var(--line);padding:10px;display:grid;justify-items:center;gap:8px;text-align:center}
+.dd .gallery figcaption{font-family:var(--lab);font-size:11px;color:var(--muted)}

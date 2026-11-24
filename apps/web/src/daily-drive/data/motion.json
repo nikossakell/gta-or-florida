@@ -1,0 +1,79 @@
+[
+  {
+    "name": "Button press",
+    "trigger": "Click, tap, G or F",
+    "duration": "70ms",
+    "easing": "steps(1)",
+    "reducedMotion": "Kept: instant state change"
+  },
+  {
+    "name": "Correct glow + pixel burst",
+    "trigger": "Right answer",
+    "duration": "700ms",
+    "easing": "steps(7)",
+    "reducedMotion": "Glow ring only, no particles"
+  },
+  {
+    "name": "Wrong shake",
+    "trigger": "Wrong answer",
+    "duration": "360ms",
+    "easing": "steps(6)",
+    "reducedMotion": "Orange border flash instead"
+  },
+  {
+    "name": "Car drive",
+    "trigger": "After every answer",
+    "duration": "1200ms",
+    "easing": "ease-in-out",
+    "reducedMotion": "Car jumps to the checkpoint"
+  },
+  {
+    "name": "Detour dip",
+    "trigger": "Wrong answer, during the drive",
+    "duration": "follows the drive",
+    "easing": "smoothstep",
+    "reducedMotion": "Route still marked, no dip"
+  },
+  {
+    "name": "Question swap",
+    "trigger": "Next headline",
+    "duration": "160ms out, 220ms in",
+    "easing": "steps(4–5)",
+    "reducedMotion": "Instant swap"
+  },
+  {
+    "name": "Streak banner + turbo flames",
+    "trigger": "3 correct in a row",
+    "duration": "1700ms",
+    "easing": "steps(10)",
+    "reducedMotion": "Static banner, no flames"
+  },
+  {
+    "name": "Timer urgency",
+    "trigger": "Under 10 seconds",
+    "duration": "1s blink loop",
+    "easing": "steps(2)",
+    "reducedMotion": "Orange colour + HURRY label only"
+  },
+  {
+    "name": "Parallax",
+    "trigger": "Camera follows the car",
+    "duration": "continuous",
+    "easing": "linear, 0.35× far layer",
+    "reducedMotion": "Far layer stays still"
+  },
+  {
+    "name": "Mascot frames",
+    "trigger": "Always",
+    "duration": "380ms per frame",
+    "easing": "2-frame loop",
+    "reducedMotion": "Frame 1 only"
+  },
+  {
+    "name": "Final score reveal",
+    "trigger": "Results screen",
+    "duration": "220ms per point, then 600ms card",
+    "easing": "steps",
+    "reducedMotion": "Score and postcard appear at once"
+  }
+]

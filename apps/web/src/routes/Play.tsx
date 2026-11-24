@@ -1,11 +1,12 @@
 import { utcDate } from '@gof/core';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { ApiError } from '../api/client.ts';
 import { challengeQuery } from '../api/queries.ts';
 import { EmptyState, ErrorState, LoadingBlock } from '../components/StateScreens.tsx';
 import { ButtonLink, Column, TopBar } from '../components/ui.tsx';
+import { DAILY_DRIVE } from '../daily-drive/flag.ts';
 import { GameSession } from '../features/game/GameSession.tsx';
 import { getResult, type StoredResult } from '../lib/storage.ts';
 import { ResultsView } from './Results.tsx';
@@ -93,8 +94,10 @@ export function PlayScreen({ id, practice = false }: { id: 'today' | string; pra
     return <Navigate to="/results/$date" params={{ date: challenge.date }} replace />;
   }
 
+  // Daily Drive lays out its own full-height play screen (.wrap); the legacy UI keeps its column.
+  const Shell = DAILY_DRIVE && challenge.questions.length === 5 ? Fragment : Column;
   return (
-    <Column>
+    <Shell>
       <GameSession
         key={`${challenge.challengeId}:${practice ? 'practice' : 'scored'}`}
         challenge={challenge}
@@ -104,6 +107,6 @@ export function PlayScreen({ id, practice = false }: { id: 'today' | string; pra
           else setPracticeResult(result);
         }}
       />
-    </Column>
+    </Shell>
   );
 }

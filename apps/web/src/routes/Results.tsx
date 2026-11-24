@@ -1,24 +1,18 @@
-import { buildShareText, msUntilNextUtcDay, scoreTitle, utcDate } from '@gof/core';
+import { buildShareText, scoreTitle, utcDate } from '@gof/core';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { PostcardStrip } from '../components/Gator.tsx';
 import { ChevronDownIcon, ClockIcon, CopyIcon, ShareIcon } from '../components/Icons.tsx';
 import { ResultGrid } from '../components/ResultGrid.tsx';
 import { EmptyState } from '../components/StateScreens.tsx';
 import { Button, ButtonLink, Column, TopBar } from '../components/ui.tsx';
+import { DAILY_DRIVE } from '../daily-drive/flag.ts';
+import { DriveResults } from '../daily-drive/screens/DriveResults.tsx';
 import { AnswerDetails } from '../features/game/RevealView.tsx';
-import { countdown, longDay } from '../lib/format.ts';
+import { longDay } from '../lib/format.ts';
+import { useCountdown } from '../lib/useCountdown.ts';
 import { copyText, publicUrl, shareText } from '../lib/share.ts';
 import { computeStats, getResult, getResults, type StoredResult } from '../lib/storage.ts';
-
-function useCountdown(): string {
-  const [ms, setMs] = useState(() => msUntilNextUtcDay());
-  useEffect(() => {
-    const id = window.setInterval(() => setMs(msUntilNextUtcDay()), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
-  return countdown(ms);
-}
 
 function Stat({ value, label, tone }: { value: string; label: string; tone: string }) {
   return (
@@ -30,6 +24,12 @@ function Stat({ value, label, tone }: { value: string; label: string; tone: stri
 }
 
 export function ResultsView({ result, practice = false }: { result: StoredResult; practice?: boolean }) {
+  // Daily Drive redesign: 5-question rounds only; the legacy view stays the fallback.
+  if (DAILY_DRIVE && result.total === 5) return <DriveResults result={result} practice={practice} />;
+  return <LegacyResultsView result={result} practice={practice} />;
+}
+
+function LegacyResultsView({ result, practice = false }: { result: StoredResult; practice?: boolean }) {
   const text = buildShareText({ date: result.date, cells: result.cells, seconds: result.seconds, url: publicUrl() });
   const [status, setStatus] = useState('');
   const today = utcDate();
