@@ -22,6 +22,32 @@
       "notes": "Evidence for documented in-game events only; licenseStatus stays unreviewed. CC BY-SA 3.0 Unported (https://www.grandtheftwiki.com/Grand_Theft_Wiki:Licensing) applies only when wiki TEXT is reused or adapted: then a prominent link to the source page, a 'from Grand Theft Wiki' credit, a pointer to the page history (authors), the licence name/link, a modification notice and CC BY-SA licensing of the adapted text are required — that attribution UI does not exist yet. GTA questions therefore use Independent Factual Summaries (original wording, wiki page linked and named as the source). Rockstar's in-game text/images are not covered by the wiki licence and are never reused."
     },
     {
+      "id": "rockstar-newswire",
+      "type": "gta_wiki",
+      "name": "Rockstar Games (Newswire and official GTA pages)",
+      "hosts": [
+        "rockstargames.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Registered 2026-11-25 as a verification source for documented GTA content (Newswire posts, official GTA VI pages) in the curated question bank (npm run bank:import). licenseStatus stays unreviewed: no reuse rights. Rockstar text, images, logos, trailers and screenshots are never reused; questions are human-reviewed Independent Factual Summaries in original wording that link to the page."
+    },
+    {
+      "id": "gtabase",
+      "type": "gta_wiki",
+      "name": "GTA Base",
+      "hosts": [
+        "gtabase.com"
+      ],
+      "licenseStatus": "unreviewed",
+      "canUseEditorialSummary": false,
+      "canDisplayOriginalTitle": false,
+      "autoPublishAllowed": false,
+      "notes": "Registered 2026-11-25 as a verification source (mission database) for documented GTA events in the curated question bank. licenseStatus stays unreviewed: no reuse rights; terms not reviewed. Questions are human-reviewed Independent Factual Summaries in original wording that link to the page; no text or images are reused."
+    },
+    {
       "id": "publisher:justice.gov",
       "type": "publisher",
       "name": "U.S. Department of Justice (U.S. Attorney's Offices, Florida)",

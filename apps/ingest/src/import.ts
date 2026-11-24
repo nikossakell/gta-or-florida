@@ -161,7 +161,7 @@ export function createWorkerClient(opts: WorkerClientOptions) {
       }
       return results;
     },
-    schedule: (days: number, extra: { startDate?: string; dryRun?: boolean } = {}) => request<ScheduleResponse & { published?: number }>('POST', '/schedule', { days, ...extra }),
+    schedule: (days: number, extra: { startDate?: string; dryRun?: boolean; cooldownDays?: number; includeSpoilers?: boolean; allowPartial?: boolean } = {}) => request<ScheduleResponse & { published?: number }>('POST', '/schedule', { days, ...extra }),
     stats: () => request<Record<string, unknown>>('GET', '/stats'),
     candidates: (q: { kind?: string; state?: string; decision?: string; limit?: number; offset?: number }) => {
       const p = new URLSearchParams(Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));

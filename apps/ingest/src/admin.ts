@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { userInfo } from 'node:os';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
-import { OFFICIAL_PUBLISH_OPERATIONS, SOURCE_OPERATIONS, accessOperationProblems, operationStatus } from '@gof/core';
+import { OFFICIAL_PUBLISH_OPERATIONS, SOURCE_OPERATIONS, accessOperationProblems, operationStatus, type ScheduleResponse } from '@gof/core';
 import { POLICY_VERSION, REGISTRY, sourceById } from '@gof/config';
 import { fetchVerdict, OFFICIAL_ADAPTERS } from './official.ts';
 import { createWorkerClient, WorkerApiError } from './import.ts';
@@ -52,6 +52,12 @@ const OPTIONS: ParseArgsConfig['options'] = {
   days: { type: 'string' },
   start: { type: 'string' },
   'dry-run': { type: 'boolean' },
+  cooldown: { type: 'string' },
+  'include-spoilers': { type: 'boolean' },
+  'allow-partial': { type: 'boolean' },
+  'event-id': { type: 'string' },
+  spoiler: { type: 'boolean' },
+  'no-spoiler': { type: 'boolean' },
   labels: { type: 'string' },
   record: { type: 'boolean' },
   json: { type: 'boolean' },
@@ -63,19 +69,23 @@ const HELP = `Admin commands (talk to the Worker's protected API):
   candidates:show   --id <question|incident id|incident key>
   questions:approve --id <q> --play-title "…" --explanation "…" [--game GTA_III] [--location-verified --published-at YYYY-MM-DD --publisher "…"]
                     [--category weird] [--difficulty 2] [--not-duplicate] [--link-verified-manually]
+                    [--event-id <shared-event-id>] [--spoiler]   (group questions about the same event; spoilers are not scheduled by default)
                     Independent Factual Summary (your own words about verified facts; no reuse of the source's wording):
                     --factual-summary --verified-date YYYY-MM-DD --verified-location "Pace, Florida" --evidence-url <https> [--evidence-url …]
                     --attest-human-written --attest-incident --attest-claims --attest-privacy [--verification-notes "…"]
                     Official-report candidates with a validated facts-first draft: --attest-machine-draft instead of
                     --attest-human-written (records textOrigin machine_draft_reviewed); --use-draft sends the stored draft text
-  questions:edit    --id <q> [--play-title "…"] [--explanation "…"]
+  questions:edit    --id <q> [--play-title "…"] [--explanation "…"] [--event-id <id>] [--spoiler | --no-spoiler]
+                    (approved questions: only --event-id / --spoiler / --no-spoiler)
   questions:reject  --id <q> --reason "…"
   questions:revoke  --id <q> --reason "…"   approved but never scheduled → back to candidate; then questions:approve again
                     with new text (+ fresh --factual-summary attestations). Scheduled questions: use withdraw.
   withdraw          (--question <q> | --day YYYY-MM-DD) --reason "…" [--message "public text"]
   incidents:merge   --id <incident> --into <incident> --reason "…"
   incidents:unmerge --id <incident> --reason "…"
-  schedule          [--days 30] [--start YYYY-MM-DD] [--dry-run]
+  schedule          [--days 30|90] [--start YYYY-MM-DD] [--cooldown 30] [--dry-run] [--include-spoilers] [--allow-partial]
+                    plans the whole period first; writes nothing if it cannot be filled (unless --allow-partial)
+  schedule:top-up   [--days 30]   what the cron does: fill what it can up to N days ahead, then publish due days
   sources:sync      copy packages/config/sources.policy.json (as deployed) into D1
   sources:show      --id <source id>   rights + per-operation access, what automation/publication still needs (offline)
   sources:yield     questions per source and state (and how many were scheduled)
@@ -112,6 +122,22 @@ function showSource(id: string | undefined): number {
   } else console.log('  access:        no per-operation review (not an official-report source)');
   if (src.notes) console.log(`  notes:         ${src.notes}`);
   return 0;
+}
+
+/** Human-readable schedule result. */
+export function formatSchedule(r: ScheduleResponse & { published?: number }): string {
+  const s = r.settings;
+  const lines = [
+    `${s.dryRun ? 'DRY RUN — nothing written. ' : ''}${s.startDate} + ${s.days} day(s), cooldown ${s.cooldownDays} day(s)${s.includeSpoilers ? ', spoilers included' : ''}`,
+    `  ${r.ok ? 'OK' : 'INFEASIBLE'}: ${r.added.length} day(s) ${s.dryRun ? 'would be added' : 'added'}, ${r.kept.length} existing day(s) kept unchanged`,
+  ];
+  if (r.added.length) lines.push(`  splits (Florida/GTA): ${r.added.map((d) => `${d.date.slice(5)} ${d.floridaCount}/${5 - d.floridaCount}`).join(' · ')}`);
+  const i = r.inventory;
+  lines.push(`  bank: ${i.eligibleFlorida} Florida (${i.floridaEvents} events) / ${i.eligibleGta} GTA (${i.gtaEvents} events) eligible; ${i.excludedSpoilers} spoiler(s) excluded; never used: ${i.unusedFlorida} Florida / ${i.unusedGta} GTA`);
+  lines.push(`  runway: ${i.runwayDays} consecutive day(s) from ${s.startDate}; ${i.scheduledAhead} round(s) scheduled from then`);
+  if (r.error) lines.push(`  ERROR ${r.error.code}: ${r.error.message}`);
+  for (const w of r.warnings.filter((w) => w.code !== 'shortage')) lines.push(`  warning (${w.code}): ${w.message}`);
+  return lines.join('\n');
 }
 
 function print(value: unknown, asJson: boolean) {
@@ -196,6 +222,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
           ...(flag('not-duplicate') ? { notDuplicate: true } : {}),
           ...(flag('link-verified-manually') ? { linkVerifiedManually: true } : {}),
           ...(linkCheck ? { linkCheck } : {}),
+          ...(str('event-id') ? { eventId: str('event-id') } : {}),
+          ...(flag('spoiler') ? { spoiler: true } : {}),
           ...(flag('factual-summary')
             ? {
                 mode: 'factual_summary' as const,
@@ -224,9 +252,21 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         throw error;
       }
     }
-    case 'questions:edit':
-      print(await api.review({ questionId: need('id'), action: 'edit', playTitle: str('play-title'), explanation: str('explanation') }), json);
+    case 'questions:edit': {
+      if (flag('spoiler') && flag('no-spoiler')) throw new Error('--spoiler and --no-spoiler are mutually exclusive');
+      print(
+        await api.review({
+          questionId: need('id'),
+          action: 'edit',
+          playTitle: str('play-title'),
+          explanation: str('explanation'),
+          ...(str('event-id') ? { eventId: str('event-id') } : {}),
+          ...(flag('spoiler') ? { spoiler: true } : flag('no-spoiler') ? { spoiler: false } : {}),
+        }),
+        json,
+      );
       return 0;
+    }
     case 'questions:reject':
       print(await api.review({ questionId: need('id'), action: 'reject', reason: need('reason') }), json);
       return 0;
@@ -256,10 +296,28 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     case 'incidents:unmerge':
       print(await api.merge({ action: 'unmerge', incidentId: need('id'), reason: need('reason') }), json);
       return 0;
+    case 'schedule:top-up': {
+      const r = await api.schedule(Number(str('days') ?? 30));
+      if (json) print(r, true);
+      else console.log(`published ${r.published ?? 0} due day(s)\n${formatSchedule(r)}`);
+      return r.ok ? 0 : 2;
+    }
     case 'schedule': {
-      const r = await api.schedule(Number(str('days') ?? 30), { ...(str('start') ? { startDate: str('start') } : {}), ...(flag('dry-run') ? { dryRun: true } : {}) });
-      print(r, json);
-      return r.shortageDate || r.warnings.length ? 2 : 0;
+      const days = Number(str('days') ?? 30);
+      if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error('--days must be 1-90 (30 or 90 are the usual horizons)');
+      const cooldown = str('cooldown');
+      if (cooldown !== undefined && !/^\d{1,3}$/.test(cooldown)) throw new Error('--cooldown must be a whole number of days');
+      const r = await api.schedule(days, {
+        // An explicit start date (default today, UTC) makes this a plain generation request: complete or nothing.
+        startDate: str('start') ?? new Date().toISOString().slice(0, 10),
+        ...(flag('dry-run') ? { dryRun: true } : {}),
+        ...(cooldown !== undefined ? { cooldownDays: Number(cooldown) } : {}),
+        ...(flag('include-spoilers') ? { includeSpoilers: true } : {}),
+        ...(flag('allow-partial') ? { allowPartial: true } : {}),
+      });
+      if (json) print(r, true);
+      else console.log(formatSchedule(r));
+      return r.ok && !r.warnings.some((w) => w.code === 'low_inventory') ? 0 : 2;
     }
     case 'sources:sync':
       print(await api.syncSources(), json);

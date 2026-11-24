@@ -19,6 +19,10 @@ export interface Env {
   INGESTION_IMPORT_TOKEN?: string;
   /** Secret: owner token for review/withdraw/stats (and everything the service token can do). */
   ADMIN_TOKEN?: string;
+  /** Days the cron keeps scheduled ahead (default 30, max 90). */
+  SCHEDULE_AHEAD_DAYS?: string;
+  /** Event cooldown in days for scheduling (default 30). */
+  EVENT_COOLDOWN_DAYS?: string;
   /** Optional Workers Rate Limiting binding (best effort, per Cloudflare location). */
   RATE_LIMITER?: { limit(opts: { key: string }): Promise<{ success: boolean }> };
 }

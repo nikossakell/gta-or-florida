@@ -70,11 +70,14 @@ export type CandidateRow = {
   created_at: string;
   /** Structured facts JSON (official-report items only). */
   facts: string | null;
+  /** Event shared by questions about the same underlying event (NULL = this question's incident). */
+  event_id: string | null;
+  spoiler: number;
 };
 
 const CANDIDATE_SQL = `
   SELECT q.id AS question_id, q.quality_state, q.gate_decision, q.gate_reasons, q.answer_kind, q.play_title, q.play_title_reviewed,
-         q.explanation, q.difficulty, q.is_fixture, q.created_at,
+         q.explanation, q.difficulty, q.is_fixture, q.created_at, COALESCE(q.event_id, q.incident_id) AS event_id, q.spoiler,
          inc.id AS incident_id, inc.incident_key, inc.kind, inc.category, inc.game, inc.game_detected, inc.florida_location, inc.florida_signal,
          inc.location_verified, inc.status AS incident_status, inc.possible_duplicate_of, inc.similarity, inc.notes, inc.facts,
          sr.id AS reference_id, sr.provider, sr.original_url, sr.original_title, sr.publisher, sr.published_at, sr.link_status, sr.checked_at, sr.final_url,
@@ -217,12 +220,25 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
   const explanation = req.explanation !== undefined ? cleanText(req.explanation, 800) : row.explanation;
 
   if (req.action === 'edit') {
-    if (row.quality_state !== 'candidate') return { ok: false, errors: ['Only candidates can be edited'] };
+    // Scheduling metadata (event grouping, spoiler flag) can change on approved questions too; it only
+    // affects future scheduling, never published wording. Text edits stay candidate-only.
+    const metaOnly = req.playTitle === undefined && req.explanation === undefined && req.difficulty === undefined;
+    if (row.quality_state !== 'candidate' && !(row.quality_state === 'approved' && metaOnly)) {
+      return { ok: false, errors: ['Only candidates can be edited (approved questions: only --event-id / --spoiler)'] };
+    }
     await db.batch([
-      db.prepare('UPDATE questions SET play_title = ?, explanation = ?, difficulty = ?, updated_at = ? WHERE id = ?').bind(playTitle, explanation, req.difficulty ?? row.difficulty, stamp, row.question_id),
-      logStmt(db, { ...actor, entityType: 'question', entityId: row.question_id, decision: 'edited' }),
+      db
+        .prepare('UPDATE questions SET play_title = ?, explanation = ?, difficulty = ?, event_id = COALESCE(?, event_id), spoiler = COALESCE(?, spoiler), updated_at = ? WHERE id = ?')
+        .bind(playTitle, explanation, req.difficulty ?? row.difficulty, req.eventId ?? null, req.spoiler === undefined ? null : req.spoiler ? 1 : 0, stamp, row.question_id),
+      logStmt(db, {
+        ...actor,
+        entityType: 'question',
+        entityId: row.question_id,
+        decision: 'edited',
+        details: { ...(req.eventId ? { eventId: req.eventId } : {}), ...(req.spoiler !== undefined ? { spoiler: req.spoiler } : {}) },
+      }),
     ]);
-    return { ok: true, questionId: row.question_id, state: 'candidate' };
+    return { ok: true, questionId: row.question_id, state: row.quality_state as 'candidate' | 'approved' };
   }
 
   // ---- approve -------------------------------------------------------------
@@ -327,11 +343,25 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
         .prepare(
           `UPDATE questions SET play_title = ?, play_title_reviewed = 1, play_title_fingerprint = ?, explanation = ?, difficulty = ?,
              quality_state = 'approved', approved_by = ?, approved_at = ?, approval_actor_type = 'human', updated_at = ?,
-             approval_mode = ?,
+             approval_mode = ?, event_id = COALESCE(?, event_id), spoiler = COALESCE(?, spoiler),
              approval_log_id = (SELECT MAX(id) FROM review_log WHERE entity_type = 'question' AND entity_id = ? AND decision = ?)
            WHERE id = ? AND quality_state = 'candidate'`,
         )
-        .bind(playTitle, titleFingerprint(playTitle), explanation, req.difficulty ?? row.difficulty, who.actorId, stamp, stamp, mode, row.question_id, decision, row.question_id),
+        .bind(
+          playTitle,
+          titleFingerprint(playTitle),
+          explanation,
+          req.difficulty ?? row.difficulty,
+          who.actorId,
+          stamp,
+          stamp,
+          mode,
+          req.eventId ?? null,
+          req.spoiler === undefined ? null : req.spoiler ? 1 : 0,
+          row.question_id,
+          decision,
+          row.question_id,
+        ),
     ]);
   } catch (error) {
     if (isConstraintError(error)) return { ok: false, errors: ['PLAY_TITLE_DUPLICATE: an approved question already uses this wording'] };

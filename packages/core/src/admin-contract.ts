@@ -7,6 +7,10 @@ import { CATEGORIES } from './types.ts';
 import { CONTENT_KINDS, GTA_GAMES, LINK_STATUSES, type GtaGame } from './content.ts';
 import { s, type Infer } from './schema.ts';
 import { incidentFactsSchema } from './facts.ts';
+import type { PlanFailure } from './round-plan.ts';
+
+/** Event id shared by questions about the same underlying event (e.g. "fl-2026-polk-airboat"). */
+export const eventIdSchema = s.string({ min: 3, max: 80, pattern: /^[a-z0-9][a-z0-9:._-]*$/ });
 
 export const MAX_IMPORT_ITEMS = 20;
 
@@ -101,6 +105,10 @@ export const importItemSchema = s.object({
     playTitleDraft: s.string({ min: 1, max: 240 }),
     explanationDraft: text(800),
     difficulty: s.int({ min: 1, max: 3 }),
+    /** Questions about the same underlying event share it (default: the incident). */
+    eventId: s.optional(eventIdSchema),
+    /** Left out of scheduling unless explicitly included. */
+    spoiler: s.optional(s.boolean()),
   }),
   ai: s.nullable(aiTraceSchema),
   /** Deterministic pre-filter result from the job (the Worker re-checks policy itself). */
@@ -211,13 +219,24 @@ export const reviewSchema = s.object({
    */
   mode: s.optional(s.enum(APPROVAL_MODES)),
   factual: s.optional(factualAttestationSchema),
+  /** Group with other questions about the same event (approve/edit; editable on approved questions too). */
+  eventId: s.optional(eventIdSchema),
+  /** Mark as a spoiler (excluded from scheduling by default). Editable on approved questions too. */
+  spoiler: s.optional(s.boolean()),
 });
 export type ReviewRequest = Infer<typeof reviewSchema>;
 
 export const scheduleSchema = s.object({
-  days: s.int({ min: 1, max: 60 }),
+  /** Period to plan (30 or 90 are the documented horizons; the Worker caps it at MAX_SCHEDULE_DAYS). */
+  days: s.int({ min: 1, max: 366 }),
   startDate: s.optional(s.string({ max: 10, pattern: /^\d{4}-\d{2}-\d{2}$/ })),
   dryRun: s.optional(s.boolean()),
+  /** Event cooldown in days (default EVENT_COOLDOWN_DAYS). */
+  cooldownDays: s.optional(s.int({ min: 0, max: 365 })),
+  /** Include questions marked as spoilers (excluded by default). */
+  includeSpoilers: s.optional(s.boolean()),
+  /** Write the days that can be planned even if the whole period cannot (the cron does this). */
+  allowPartial: s.optional(s.boolean()),
 });
 export type ScheduleRequest = Infer<typeof scheduleSchema>;
 
@@ -239,11 +258,29 @@ export const benchmarkSchema = s.object({
 });
 
 export type ScheduleResponse = {
+  /** false = the requested period could not be planned in full (see error); nothing was written unless allowPartial. */
+  ok: boolean;
   added: { date: string; floridaCount: number }[];
   kept: string[];
+  /** First date that could not be filled, if any. */
   shortageDate: string | null;
+  error: { code: 'SCHEDULE_INFEASIBLE'; date: string; message: string; details: PlanFailure } | null;
   warnings: { code: string; date?: string; message: string }[];
-  inventory: { unusedFlorida: number; unusedGta: number; runwayDays: number; scheduledAhead: number };
+  inventory: {
+    /** Eligible questions that were never scheduled. */
+    unusedFlorida: number;
+    unusedGta: number;
+    /** Eligible (and, unless included, non-spoiler) questions / distinct events in the bank. */
+    eligibleFlorida: number;
+    eligibleGta: number;
+    floridaEvents: number;
+    gtaEvents: number;
+    excludedSpoilers: number;
+    /** Consecutive days from the start date that are scheduled (or, in a dry run, would be). */
+    runwayDays: number;
+    scheduledAhead: number;
+  };
+  settings: { startDate: string; days: number; cooldownDays: number; includeSpoilers: boolean; dryRun: boolean; allowPartial: boolean };
 };
 
 export const DEFAULT_WITHDRAWN_MESSAGE = 'This round was withdrawn for a content review. Please check back later.';

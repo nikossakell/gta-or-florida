@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { addDays, createRng } from '@gof/core';
+import { addDays, createRng, daysBetween } from '@gof/core';
 import { eligiblePool, ensureSchedule, scheduleRounds } from '../src/services/scheduling.ts';
 import { ADMIN_TOKEN, APPROVED_PUBLISHER, createHarness, migrationStatements, postJson, seedApproved, seedMany, seedSource, type Harness } from './harness.ts';
 import type { SourcePolicy } from '@gof/core';
@@ -25,24 +25,54 @@ async function rounds() {
   return byDay;
 }
 
-describe('scheduleRounds', () => {
-  it('alternates 3/2 and 2/3, five unique questions per day, never reused', async () => {
-    await seedMany(h.db, 30, 30);
-    const r = await scheduleRounds(h.db, { startDate: START, days: 10, rng: createRng('alt') });
+const floridaPerDay = (days: Awaited<ReturnType<typeof rounds>>) => [...days.values()].map((d) => d.filter((x) => x.answer_kind === 'FLORIDA').length);
+const eventOf = async () =>
+  new Map(
+    (await h.db.prepare('SELECT id, COALESCE(event_id, incident_id) AS ev FROM questions').all<{ id: string; ev: string }>()).results.map((r) => [r.id, r.ev]),
+  );
+
+/** Hard constraints on what is persisted: 5 per day, no duplicate question/event in a day, cooldown between uses of an event. */
+async function expectValidSchedule(cooldown: number) {
+  const days = await rounds();
+  const ev = await eventOf();
+  const lastUse = new Map<string, string>();
+  for (const [day, items] of [...days.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    expect(items.map((i) => i.position)).toEqual([1, 2, 3, 4, 5]);
+    expect(new Set(items.map((i) => i.question_id)).size).toBe(5);
+    expect(new Set(items.map((i) => ev.get(i.question_id))).size).toBe(5);
+    expect(items[0]!.florida_count).toBe(items.filter((i) => i.answer_kind === 'FLORIDA').length);
+    for (const i of items) {
+      const e = ev.get(i.question_id)!;
+      const prev = lastUse.get(e);
+      if (prev) expect(daysBetween(prev, day), `${e} on ${prev} and ${day}`).toBeGreaterThanOrEqual(cooldown);
+      lastUse.set(e, day);
+    }
+  }
+  return days;
+}
+
+describe('scheduleRounds (verified bank, pseudo-random days)', () => {
+  it('writes exactly five questions a day with no duplicate question or event, numbered from the epoch', async () => {
+    await seedMany(h.db, 40, 40);
+    const r = await scheduleRounds(h.db, { startDate: START, days: 10, rng: createRng('basic') });
+    expect(r.ok).toBe(true);
+    expect(r.error).toBeNull();
     expect(r.added).toHaveLength(10);
-    expect(r.shortageDate).toBeNull();
-    const days = await rounds();
-    const counts = [...days.values()].map((d) => d.filter((x) => x.answer_kind === 'FLORIDA').length);
-    counts.forEach((c, i) => {
-      expect([2, 3]).toContain(c);
-      if (i > 0) expect(c).not.toBe(counts[i - 1]);
-    });
-    const ids = [...days.values()].flat().map((x) => x.question_id);
-    expect(new Set(ids).size).toBe(50);
+    const days = await expectValidSchedule(30);
     expect([...days.values()].map((d) => d[0]!.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(r.added.map((a) => a.floridaCount)).toEqual(floridaPerDay(days));
+    expect(r.settings).toMatchObject({ startDate: START, days: 10, cooldownDays: 30, includeSpoilers: false });
   });
 
-  it('is idempotent: re-running keeps existing days and their order', async () => {
+  it('persists any split, including 0 Florida / 5 GTA and 5 Florida / 0 GTA (no fixed ratio)', async () => {
+    await seedMany(h.db, 12, 12);
+    // Every slot draw below 0.5 is Florida: a constant source forces the extremes.
+    await scheduleRounds(h.db, { startDate: START, days: 2, cooldownDays: 2, rng: () => 0.9 });
+    await scheduleRounds(h.db, { startDate: addDays(START, 2), days: 2, cooldownDays: 2, rng: () => 0.1 });
+    expect(floridaPerDay(await expectValidSchedule(2))).toEqual([0, 0, 5, 5]);
+  });
+
+  it('is idempotent: re-running keeps existing days, their questions and their order', async () => {
     await seedMany(h.db, 20, 20);
     await scheduleRounds(h.db, { startDate: START, days: 3, rng: createRng('a') });
     const before = await rounds();
@@ -52,21 +82,118 @@ describe('scheduleRounds', () => {
     expect(await rounds()).toEqual(before);
   });
 
-  it('stops at a shortage without writing a partial day or inventing anything', async () => {
-    await seedMany(h.db, 6, 4);
-    const r = await scheduleRounds(h.db, { startDate: START, days: 5, rng: createRng('short') });
-    expect(r.added).toHaveLength(2);
-    expect(r.shortageDate).toBe(addDays(START, 2));
-    expect(r.warnings.map((w) => w.code)).toEqual(expect.arrayContaining(['shortage', 'low_inventory']));
-    const days = await rounds();
-    expect(days.size).toBe(2);
-    for (const d of days.values()) expect(d).toHaveLength(5);
+  it('never changes published or withdrawn days when a later run overlaps them', async () => {
+    await seedMany(h.db, 30, 30);
+    await scheduleRounds(h.db, { startDate: START, days: 2, rng: createRng('pub') });
+    await h.db.batch([
+      h.db.prepare(`UPDATE daily_rounds SET status = 'published' WHERE day = ?`).bind(START),
+      h.db.prepare(`UPDATE daily_rounds SET status = 'withdrawn' WHERE day = ?`).bind(addDays(START, 1)),
+    ]);
+    const before = await rounds();
+    const r = await scheduleRounds(h.db, { startDate: START, days: 4, rng: createRng('later') });
+    expect(r.kept).toEqual([START, addDays(START, 1)]);
+    expect(r.added.map((a) => a.date)).toEqual([addDays(START, 2), addDays(START, 3)]);
+    const after = await rounds();
+    expect(after.get(START)).toEqual(before.get(START));
+    expect(after.get(addDays(START, 1))).toEqual(before.get(addDays(START, 1)));
+    await expectValidSchedule(30); // withdrawn days still count for the cooldown
   });
 
-  it('first day can run with 3 + 3 approved', async () => {
-    await seedMany(h.db, 3, 3);
-    const r = await scheduleRounds(h.db, { startDate: START, days: 1 });
-    expect(r.added).toHaveLength(1);
+  it('reuses a question only after its event cooldown, preferring the least-used ones', async () => {
+    await seedMany(h.db, 5, 5);
+    const r = await scheduleRounds(h.db, { startDate: START, days: 6, cooldownDays: 2, rng: createRng('reuse') });
+    expect(r.ok).toBe(true);
+    await expectValidSchedule(2);
+    const uses = await h.db.prepare('SELECT question_id, COUNT(*) AS n FROM daily_round_items GROUP BY question_id').all<{ n: number }>();
+    expect(uses.results).toHaveLength(10);
+    expect(uses.results.every((u) => u.n === 3)).toBe(true); // 30 slots over 10 questions, evenly
+  });
+
+  it('keeps the cooldown against persisted days and reports the blocking inventory instead of writing a bad day', async () => {
+    await seedMany(h.db, 10, 10);
+    expect((await scheduleRounds(h.db, { startDate: START, days: 3, rng: createRng('c1') })).ok).toBe(true);
+    // 20 events, 15 shown in the last 3 days: a 30-day cooldown leaves 5, enough for one more day only.
+    const r = await scheduleRounds(h.db, { startDate: addDays(START, 10), days: 2, rng: createRng('c2') });
+    expect(r.ok).toBe(false);
+    expect(r.added).toEqual([]);
+    expect(r.error).toMatchObject({ code: 'SCHEDULE_INFEASIBLE', date: addDays(START, 11) });
+    expect(r.error!.details).toMatchObject({ plannedDays: 1, requestedDays: 2, floridaEvents: 10, gtaEvents: 10, cooldownDays: 30 });
+    expect(r.error!.message).toMatch(/Cannot fill .* 30-day event cooldown.*Nothing was written/);
+    expect(r.warnings.map((w) => w.code)).toContain('shortage');
+    expect((await rounds()).size).toBe(3);
+    await expectValidSchedule(30);
+  });
+
+  it('plans the whole period first: all days or none (unless allowPartial, which writes the valid prefix)', async () => {
+    await seedMany(h.db, 6, 4);
+    const none = await scheduleRounds(h.db, { startDate: START, days: 5, rng: createRng('short') });
+    expect(none).toMatchObject({ ok: false, added: [], shortageDate: addDays(START, 2) });
+    expect((await rounds()).size).toBe(0);
+    const partial = await scheduleRounds(h.db, { startDate: START, days: 5, allowPartial: true, rng: createRng('short') });
+    expect(partial.ok).toBe(false);
+    expect(partial.added).toHaveLength(2);
+    expect(partial.error!.message).toMatch(/Wrote the 2 day\(s\) before/);
+    expect(partial.inventory.runwayDays).toBe(2);
+    await expectValidSchedule(30);
+  });
+
+  it('handles a missing category by drawing from what exists, and warns about the thin side', async () => {
+    await seedMany(h.db, 0, 12);
+    const r = await scheduleRounds(h.db, { startDate: START, days: 2, rng: createRng('gta-only') });
+    expect(r.ok).toBe(true);
+    expect(floridaPerDay(await expectValidSchedule(30))).toEqual([0, 0]);
+    expect(r.warnings.map((w) => w.code)).toEqual(expect.arrayContaining(['thin_inventory', 'split_resampled']));
+    const none = await scheduleRounds(h.db, { startDate: addDays(START, 2), days: 1, rng: createRng('x') });
+    expect(none.error!.message).toMatch(/0 Florida and 12 GTA event\(s\)/);
+  });
+
+  it('never puts two questions about the same event in a day, and applies the cooldown to the shared event', async () => {
+    // Three Florida questions describe one event, so the six Florida questions are four events.
+    for (let seed = 0; seed < 4; seed++) {
+      await h.reset();
+      await seedMany(h.db, 6, 6);
+      const fresh = (await h.db.prepare(`SELECT id FROM questions WHERE answer_kind = 'FLORIDA' ORDER BY id`).all<{ id: string }>()).results.map((r) => r.id);
+      await h.db.prepare(`UPDATE questions SET event_id = 'ev-shared' WHERE id IN (?, ?, ?)`).bind(fresh[0], fresh[1], fresh[2]).run();
+      const r = await scheduleRounds(h.db, { startDate: START, days: 2, rng: createRng(`ev${seed}`) });
+      expect(r.inventory.floridaEvents).toBe(4);
+      if (r.ok) await expectValidSchedule(30);
+    }
+  });
+
+  it('leaves spoilers out unless they are explicitly included', async () => {
+    await seedMany(h.db, 5, 5);
+    const spoiler = (await h.db.prepare(`SELECT id FROM questions WHERE answer_kind = 'GTA' ORDER BY id LIMIT 1`).first<{ id: string }>())!.id;
+    await h.db.prepare('UPDATE questions SET spoiler = 1 WHERE id = ?').bind(spoiler).run();
+    const r = await scheduleRounds(h.db, { startDate: START, days: 1, rng: createRng('sp') });
+    expect(r).toMatchObject({ ok: true, inventory: { excludedSpoilers: 1, eligibleGta: 4 } });
+    expect([...(await rounds()).values()].flat().map((x) => x.question_id)).not.toContain(spoiler);
+    await h.reset();
+    await seedMany(h.db, 0, 5);
+    const only = (await h.db.prepare(`SELECT id FROM questions ORDER BY id LIMIT 1`).first<{ id: string }>())!.id;
+    await h.db.prepare('UPDATE questions SET spoiler = 1 WHERE id = ?').bind(only).run();
+    expect((await scheduleRounds(h.db, { startDate: START, days: 1, rng: createRng('sp2') })).ok).toBe(false);
+    expect((await scheduleRounds(h.db, { startDate: START, days: 1, includeSpoilers: true, rng: createRng('sp2') })).ok).toBe(true);
+  });
+
+  it('generates a 90-day horizon in one run; longer periods are refused', async () => {
+    await seedMany(h.db, 20, 20);
+    const r = await scheduleRounds(h.db, { startDate: START, days: 90, cooldownDays: 7, rng: createRng('ninety') });
+    expect(r.ok).toBe(true);
+    expect(r.added).toHaveLength(90);
+    expect(r.inventory.runwayDays).toBe(90);
+    const days = await expectValidSchedule(7);
+    expect(days.size).toBe(90);
+    expect(new Set(floridaPerDay(days)).size).toBeGreaterThanOrEqual(4); // the split varies
+    await expect(scheduleRounds(h.db, { startDate: START, days: 91 })).rejects.toThrow(/days must be 1-90/);
+  });
+
+  it('a dry run plans and reports but writes nothing', async () => {
+    await seedMany(h.db, 20, 20);
+    const r = await scheduleRounds(h.db, { startDate: START, days: 5, dryRun: true, rng: createRng('dry') });
+    expect(r).toMatchObject({ ok: true, settings: { dryRun: true } });
+    expect(r.added).toHaveLength(5);
+    expect(r.inventory.runwayDays).toBe(5);
+    expect((await rounds()).size).toBe(0);
   });
 
   it('two concurrent runs never duplicate or reorder a date', async () => {
@@ -76,10 +203,8 @@ describe('scheduleRounds', () => {
       scheduleRounds(h.db, { startDate: START, days: 4, rng: createRng('y') }),
     ]);
     expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
-    const days = await rounds();
+    const days = await expectValidSchedule(30);
     expect(days.size).toBe(4);
-    const ids = [...days.values()].flat().map((x) => x.question_id);
-    expect(new Set(ids).size).toBe(20);
   });
 
   it('excludes unreviewed sources, broken links, fixtures and unapproved questions', async () => {
@@ -93,15 +218,17 @@ describe('scheduleRounds', () => {
     const r = await scheduleRounds(h.db, { startDate: START, days: 1 });
     expect(r.added).toEqual([]);
     expect(r.shortageDate).toBe(START);
+    expect(r.inventory).toMatchObject({ eligibleFlorida: 0, eligibleGta: 3 });
   });
 
-  it('ensureSchedule publishes due days and keeps a forward window', async () => {
+  it('ensureSchedule (cron) writes what it can, publishes due days and keeps a forward window', async () => {
     await seedMany(h.db, 40, 40);
-    const r = await ensureSchedule(h.db, { now: new Date(`${START}T00:05:00Z`), aheadDays: 30 });
-    expect(r.added.length).toBe(16); // 80 approved / 5 per day
+    const r = await ensureSchedule(h.db, { now: new Date(`${START}T00:05:00Z`), aheadDays: 30, rng: createRng('cron') });
+    expect(r.added.length).toBe(16); // 80 events / 5 per day under a 30-day cooldown
     expect(r.shortageDate).toBe(addDays(START, 16));
     const st = await h.db.prepare(`SELECT status, COUNT(*) AS n FROM daily_rounds GROUP BY status`).all<{ status: string; n: number }>();
     expect(Object.fromEntries(st.results.map((x) => [x.status, x.n]))).toEqual({ published: 1, scheduled: 15 });
+    await expectValidSchedule(30);
   });
 });
 
@@ -127,14 +254,15 @@ const factualGta = (o: Parameters<typeof seedApproved>[2] = {}) => seedApproved(
 const poolIds = async (appEnv = 'staging') => new Set((await eligiblePool(h.db, false, appEnv)).map((q) => q.id));
 
 describe('approval modes and provenance', () => {
-  it('schedules factual-summary GTA questions from the unreviewed wiki in the usual 3 + 2 split; licensed ones still need source rights', async () => {
+  it('schedules factual-summary GTA questions from the unreviewed wiki; licensed ones still need source rights', async () => {
     await seedSources();
     const fl = await licensedFlorida(3);
     const gta = [await factualGta(), await factualGta()];
     const licensedOnUnreviewedWiki = await seedApproved(h.db, 'GTA', { sourceId: WIKI.id, provider: 'grandtheftwiki', mode: 'licensed' });
     expect(await poolIds()).toEqual(new Set([...fl, ...gta]));
 
-    const r = await scheduleRounds(h.db, { startDate: START, days: 2, rng: createRng('modes'), appEnv: 'staging' });
+    // Five eligible events in all: the first day must use every one (the draw is resampled to 3 + 2).
+    const r = await scheduleRounds(h.db, { startDate: START, days: 2, allowPartial: true, rng: createRng('modes'), appEnv: 'staging' });
     expect(r.added).toEqual([{ date: START, floridaCount: 3 }]);
     expect(r.shortageDate).toBe(addDays(START, 1));
     const day = (await rounds()).get(START)!;
@@ -218,8 +346,8 @@ describe('approval modes and provenance', () => {
     const days = await rounds();
     expect(days.size).toBe(5);
     const ids = [...days.values()].flat().map((x) => x.question_id);
-    expect(new Set(ids).size).toBe(25);
-    for (const d of days.values()) expect([2, 3]).toContain(d.filter((x) => x.answer_kind === 'FLORIDA').length);
+    expect(new Set(ids).size).toBe(25); // 30 events, 30-day cooldown: no reuse within 5 days
+    await expectValidSchedule(30);
   });
 
   it('migration backfills the mode and audit row of approvals made before it', async () => {
