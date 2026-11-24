@@ -254,6 +254,9 @@ async function playRound(choices: readonly ('gta' | 'florida')[], useKeys: boole
   return completed!;
 }
 
+/** Full five-question rounds through the real UI take ~2.5 s alone but can pass 5 s when every workspace's suite runs in parallel. */
+const FULL_ROUND_TIMEOUT = 20_000;
+
 describe('Daily Drive: a full round through the existing game logic', () => {
   const CHOICES = ['florida', 'gta', 'florida', 'florida', 'florida'] as const; // 4 of 5 right, 3-in-a-row streak first
 
@@ -295,7 +298,7 @@ describe('Daily Drive: a full round through the existing game logic', () => {
     await waitFor(() => expect(completed).not.toBeNull());
     expect(completed!).toMatchObject({ score: 4, total: 5, cells: [true, false, true, true, true] });
     expect(getResult('2026-11-19')?.score).toBe(4);
-  });
+  }, FULL_ROUND_TIMEOUT);
 
   it('gives the same saved result with the flag on (keyboard) and off (legacy UI)', async () => {
     flag.on = true;
@@ -306,7 +309,7 @@ describe('Daily Drive: a full round through the existing game logic', () => {
     const strip = (r: StoredResult) => ({ ...r, completedAt: '', seconds: 0 });
     expect(strip(on)).toEqual(strip(off));
     expect(on.score).toBe(4);
-  });
+  }, FULL_ROUND_TIMEOUT);
 
   it('time’s up: unanswered checkpoints are marked unanswered and the existing "see results" step remains', async () => {
     mockApi();
