@@ -20,6 +20,8 @@ export const COPY = copyJson as unknown as {
     timerStates: { running: string; urgent: string; paused: string };
   };
   disclaimer: string;
+  /** Spoiler policy notice; same text as the legacy footer's SPOILER_NOTICE. */
+  spoilerNotice: string;
 };
 
 /** Zones are fixed by question position: Q1 Welcome … Q5 Vice. */

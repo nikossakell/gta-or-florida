@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { BackIcon } from '../components/Icons.tsx';
-import { Button, ButtonLink, Column, IconLink } from '../components/ui.tsx';
+import { Button, ButtonLink, Column, IconLink, SPOILER_NOTICE } from '../components/ui.tsx';
 import { clearAllLocalData } from '../lib/storage.ts';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -87,6 +87,10 @@ export function About() {
         <p>
           GTA or Florida? is an unofficial, fan-made parody game. It is not affiliated with, endorsed by, or sponsored by Rockstar Games or Take-Two
           Interactive. Grand Theft Auto and GTA are trademarks of their respective owners. No game artwork, logos, fonts or other assets are used.
+        </p>
+        <p>
+          {SPOILER_NOTICE} GTA headlines describe mission events in general terms and avoid major story twists, endings and the deaths of important
+          characters.
         </p>
       </Section>
     </Column>

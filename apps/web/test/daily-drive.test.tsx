@@ -14,6 +14,9 @@ import { trailingStreak } from '../src/daily-drive/lib/streak.ts';
 import { DriveResults } from '../src/daily-drive/screens/DriveResults.tsx';
 import { GameSession } from '../src/features/game/GameSession.tsx';
 import { getResult, type StoredResult } from '../src/lib/storage.ts';
+import { SPOILER_NOTICE } from '../src/components/ui.tsx';
+import { COPY } from '../src/daily-drive/lib/copy.ts';
+import { Landing } from '../src/routes/Landing.tsx';
 
 // The flag is a build-time constant; here it is a live binding so one file can run both UIs.
 const flag = vi.hoisted(() => ({ on: true }));
@@ -381,5 +384,24 @@ describe('Daily Drive: results', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('spoiler notice in both landing variants', () => {
+  it('uses the same wording in the Daily Drive copy deck as in the legacy footer', () => {
+    expect(COPY.spoilerNotice).toBe(SPOILER_NOTICE);
+  });
+
+  it.each([
+    ['Daily Drive (flag on)', true],
+    ['legacy (flag off)', false],
+  ])('shows it discreetly in the %s footer, without a modal or consent step', async (_name, on) => {
+    flag.on = on;
+    mockApi();
+    withProviders(<Landing />);
+    const notice = await screen.findByText((_text, el) => el?.tagName === 'P' && (el.textContent ?? '').includes(SPOILER_NOTICE));
+    expect(notice.textContent).toMatch(/Not affiliated with or endorsed by Rockstar Games/);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
   });
 });

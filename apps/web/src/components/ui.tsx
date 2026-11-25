@@ -93,6 +93,9 @@ export function Badge({ children, tone = 'sun' }: { children: ReactNode; tone?: 
   return <span className={`label-wide inline-flex items-center rounded-full border-[3px] px-4 py-1.5 text-xs sm:text-sm ${tones[tone]}`}>{children}</span>;
 }
 
+/** Spoiler policy notice (Nov 2026): shown discreetly in the footer of both landing variants and on About. */
+export const SPOILER_NOTICE = 'Some questions may contain minor spoilers from the Grand Theft Auto series.';
+
 export function Disclaimer({ className = '' }: { className?: string }) {
   return (
     <p className={`text-dim text-center text-sm ${className}`}>
@@ -100,6 +103,7 @@ export function Disclaimer({ className = '' }: { className?: string }) {
       <Link to="/about" className="text-muted underline underline-offset-4 hover:text-cream">
         About &amp; privacy
       </Link>
+      <span className="mt-1 block">{SPOILER_NOTICE}</span>
     </p>
   );
 }
