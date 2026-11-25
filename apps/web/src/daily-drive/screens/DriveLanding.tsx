@@ -99,6 +99,8 @@ export function DriveLanding() {
       </p>
       <p className="foot">
         {COPY.disclaimer} All art on this page is original. <Link to="/about">About &amp; privacy</Link>
+        <br />
+        {COPY.spoilerNotice}
       </p>
     </div>
   );
