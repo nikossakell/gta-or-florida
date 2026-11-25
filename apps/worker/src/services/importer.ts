@@ -302,8 +302,8 @@ export async function importBatch(batch: ImportBatch, ctx: Ctx): Promise<ImportI
         .prepare(
           `INSERT INTO questions (id, incident_id, primary_reference_id, answer_kind, play_title, play_title_reviewed, play_title_fingerprint, explanation,
              difficulty, quality_state, gate_decision, gate_reasons, confidence_metadata, eligible_for_auto_publish, approved_by, approved_at,
-             approval_actor_type, rejected_reason, is_fixture)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             approval_actor_type, rejected_reason, is_fixture, event_id, spoiler)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           questionId,
@@ -325,6 +325,8 @@ export async function importBatch(batch: ImportBatch, ctx: Ctx): Promise<ImportI
           state === 'approved' ? (fixture ? 'human' : 'policy') : null,
           state === 'rejected' ? `gate: ${reasons.join(', ')}`.slice(0, 500) : null,
           fixture ? 1 : 0,
+          item.question.eventId ?? null,
+          item.question.spoiler ? 1 : 0,
         ),
     );
     stmts.push(

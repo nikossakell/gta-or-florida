@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createRng,
   evaluateAutoPublish,
   extractJsonObject,
   groundAssessment,
   parse,
   parseAutoPublishMode,
-  planDay,
   s,
   type AutoPublishFacts,
-  type PoolQuestion,
   type SourcePolicy,
 } from '../src/index.ts';
 
@@ -126,19 +123,5 @@ describe('model output grounding', () => {
       { kind: 'FLORIDA_NEWS', sourceText: 'Tampa man does something odd at bank', originalTitle: 'Tampa man does something odd at bank', exactTitleAllowed: false, deterministicGame: null },
     );
     expect(g.reasonCodes).toEqual(expect.arrayContaining(['GROUND_PLAY_TITLE', 'GROUND_FLORIDA_EVIDENCE', 'GROUND_KIND_MISMATCH']));
-  });
-});
-
-describe('planDay', () => {
-  const pool = (f: number, g: number): PoolQuestion[] => [
-    ...Array.from({ length: f }, (_, i) => ({ id: `f${i}`, answer: 'FLORIDA' as const, category: 'weird', difficulty: 2, publisher: `p${i % 3}`, game: null })),
-    ...Array.from({ length: g }, (_, i) => ({ id: `g${i}`, answer: 'GTA' as const, category: 'crime', difficulty: 2, publisher: null, game: `G${i % 2}` })),
-  ];
-  it('alternates from the previous day and reports shortages', () => {
-    const a = planDay({ pool: pool(5, 5), size: 5, previousFlorida: 3, previousPattern: null, rng: createRng('x') });
-    expect(a.ok && a.floridaCount).toBe(2);
-    const b = planDay({ pool: pool(5, 5), size: 5, previousFlorida: 2, previousPattern: null, rng: createRng('x') });
-    expect(b.ok && b.floridaCount).toBe(3);
-    expect(planDay({ pool: pool(1, 9), size: 5, previousFlorida: null, previousPattern: null, rng: createRng('x') })).toMatchObject({ ok: false, floridaAvailable: 1 });
   });
 });

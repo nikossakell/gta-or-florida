@@ -21,7 +21,7 @@ import {
   type ImportResponse,
   type Schema,
 } from '@gof/core';
-import { POLICY_VERSION, SCHEDULE_AHEAD_DAYS } from '@gof/config';
+import { MAX_SCHEDULE_DAYS, POLICY_VERSION } from '@gof/config';
 import { isLocal, type Env } from '../env.ts';
 import { HttpError, json, only, readJson } from '../http.ts';
 import { authenticate } from '../security/auth.ts';
@@ -29,7 +29,7 @@ import { idempotencyKey, pruneStmt, rememberStmt, replay, sha256Hex } from '../s
 import { logStmt, setMetaStmt } from '../db/repo.ts';
 import { importBatch } from '../services/importer.ts';
 import { candidateDetails, collectStats, knownKeys, listCandidates, mergeIncidents, review, titleIndex, withdraw } from '../services/review.ts';
-import { ensureSchedule, scheduleRounds } from '../services/scheduling.ts';
+import { ensureSchedule, scheduleRounds, scheduleVars } from '../services/scheduling.ts';
 import { syncSources } from '../services/sources.ts';
 
 function validate<T>(schema: Schema<T>, body: unknown): T {
@@ -98,11 +98,28 @@ export async function handleAdmin(request: Request, env: Env, url: URL, now: () 
     const body = validate(scheduleSchema, await readJson(request, MAX_ADMIN_BODY_BYTES));
     const today = utcDate(now());
     if (body.startDate && body.startDate < today) throw new HttpError(400, 'BAD_REQUEST', 'startDate cannot be in the past (published rounds are immutable).');
+    if (body.days > MAX_SCHEDULE_DAYS) throw new HttpError(400, 'BAD_REQUEST', `days must be 1-${MAX_SCHEDULE_DAYS}`);
     const actorType = who.role === 'admin' ? ('human' as const) : ('service' as const);
-    if (!body.startDate && !body.dryRun) {
-      return json(200, await ensureSchedule(db, { now: now(), aheadDays: Math.min(body.days, 60), allowFixtures: isLocal(env), actorId: who.actorId, actorType, appEnv: env.APP_ENV }));
+    const cooldownDays = body.cooldownDays ?? scheduleVars(env).cooldownDays;
+    // Top-up form (no start date, not a dry run, default settings): the cron path, which also publishes due days.
+    if (!body.startDate && !body.dryRun && body.includeSpoilers === undefined && body.allowPartial === undefined) {
+      return json(200, await ensureSchedule(db, { now: now(), aheadDays: body.days, cooldownDays, allowFixtures: isLocal(env), actorId: who.actorId, actorType, appEnv: env.APP_ENV }));
     }
-    return json(200, await scheduleRounds(db, { startDate: body.startDate ?? today, days: body.days, dryRun: body.dryRun, allowFixtures: isLocal(env), actorId: who.actorId, actorType, appEnv: env.APP_ENV }));
+    return json(
+      200,
+      await scheduleRounds(db, {
+        startDate: body.startDate ?? today,
+        days: body.days,
+        dryRun: body.dryRun,
+        cooldownDays,
+        includeSpoilers: body.includeSpoilers,
+        allowPartial: body.allowPartial,
+        allowFixtures: isLocal(env),
+        actorId: who.actorId,
+        actorType,
+        appEnv: env.APP_ENV,
+      }),
+    );
   }
 
   // --- admin only -----------------------------------------------------------
@@ -162,7 +179,7 @@ export async function handleAdmin(request: Request, env: Env, url: URL, now: () 
   }
   if (path === '/ensure-schedule') {
     only(request, 'POST');
-    return json(200, await ensureSchedule(db, { now: now(), aheadDays: SCHEDULE_AHEAD_DAYS, allowFixtures: isLocal(env), actorId: who.actorId, actorType: 'human', appEnv: env.APP_ENV }));
+    return json(200, await ensureSchedule(db, { now: now(), ...scheduleVars(env), allowFixtures: isLocal(env), actorId: who.actorId, actorType: 'human', appEnv: env.APP_ENV }));
   }
   throw new HttpError(404, 'NOT_FOUND', 'Unknown admin route.');
 }

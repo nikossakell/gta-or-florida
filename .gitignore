@@ -23,3 +23,7 @@ reports/
 *.sqlite-journal
 *.db
 backups/
+
+# Curated question-bank batches contain the answers: keep them out of git (store them privately).
+data/bank/*.json
+!data/bank/dev-fixtures.json

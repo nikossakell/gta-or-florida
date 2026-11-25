@@ -185,7 +185,12 @@ export function estimateNeurons(model: string, tokensIn: number, tokensOut: numb
 // ---------------------------------------------------------------------------
 
 export const DAILY_SIZE = 5;
+/** Days the cron keeps scheduled ahead (Worker var SCHEDULE_AHEAD_DAYS overrides). */
 export const SCHEDULE_AHEAD_DAYS = 30;
+/** Longest period one schedule request may plan (30 and 90 are the documented horizons). */
+export const MAX_SCHEDULE_DAYS = 90;
+/** An event is not shown again within this many days of another showing (Worker var EVENT_COOLDOWN_DAYS overrides). */
+export const EVENT_COOLDOWN_DAYS = 30;
 export const LOW_INVENTORY_DAYS = 14;
 export const ARCHIVE_DAYS = 7;
 export const TIME_LIMIT_SECONDS = 60;
