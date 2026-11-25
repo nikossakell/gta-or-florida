@@ -50,7 +50,7 @@ const entries: BankEntry[] = [
     eventId: 'test-gta-trailer',
     origin: 'GTA',
     headline: 'Two leads plan a heist in a newly released trailer scene',
-    explanation: 'Test entry: stands in for official upcoming-game content that should not be scheduled by default.',
+    explanation: 'Test entry: stands in for upcoming-game story content; it stays a candidate until a human reviews it.',
     sourceUrl: 'https://www.grandtheftwiki.com/Test_Trailer',
     sourceTitle: 'Test Trailer',
     game: 'GTA_VI',
@@ -100,7 +100,9 @@ describe('/api/v1/admin/schedule', () => {
   it('accepts a 30- or 90-day horizon, a cooldown and the spoiler switch; refuses longer periods and past dates', async () => {
     await seedMany(h.db, 12, 12);
     const r = (await (await schedule({ days: 30, startDate: TODAY, dryRun: true, cooldownDays: 4 })).json()) as ScheduleResponse;
-    expect(r).toMatchObject({ ok: true, settings: { days: 30, cooldownDays: 4, includeSpoilers: false, dryRun: true } });
+    expect(r).toMatchObject({ ok: true, settings: { days: 30, cooldownDays: 4, includeSpoilers: true, dryRun: true } });
+    const optOut = (await (await schedule({ days: 30, startDate: TODAY, dryRun: true, cooldownDays: 4, includeSpoilers: false })).json()) as ScheduleResponse;
+    expect(optOut.settings.includeSpoilers).toBe(false);
     expect(r.added).toHaveLength(30);
     expect((await schedule({ days: 90, startDate: TODAY, dryRun: true, cooldownDays: 4 })).status).toBe(200);
     expect((await schedule({ days: 91, startDate: TODAY })).status).toBe(400);
@@ -141,11 +143,27 @@ describe('public play with a reused question', () => {
     }
   });
 
-  it('a spoiler that was explicitly scheduled is still served normally (the flag only affects scheduling)', async () => {
+  it('schedules spoiler-flagged questions by default and serves them without exposing the flag or the answer before a guess', async () => {
     await seedMany(h.db, 3, 2);
     await h.db.prepare(`UPDATE questions SET spoiler = 1 WHERE answer_kind = 'GTA'`).run();
-    expect((await scheduleRounds(h.db, { startDate: TODAY, days: 1 })).ok).toBe(false);
-    expect((await scheduleRounds(h.db, { startDate: TODAY, days: 1, includeSpoilers: true })).ok).toBe(true);
-    expect((await call('/api/challenge/today')).status).toBe(200);
+    expect((await scheduleRounds(h.db, { startDate: TODAY, days: 1 })).ok).toBe(true);
+    const flagged = await h.db.prepare('SELECT COUNT(*) AS n FROM daily_round_items i JOIN questions q ON q.id = i.question_id WHERE q.spoiler = 1').first<{ n: number }>();
+    expect(flagged!.n).toBe(2);
+    const res = await call('/api/challenge/today');
+    expect(res.status).toBe(200);
+    const raw = await res.text();
+    for (const q of (JSON.parse(raw) as ChallengeResponse).questions) expect(Object.keys(q).sort()).toEqual(['headline', 'id']);
+    expect(raw).not.toMatch(/spoiler|answer|source|origin|event_?id|FLORIDA|GTA_|"florida"|"gta"|https?:\/\//i);
+  });
+
+  it('an imported spoiler draft (e.g. unreleased-game story) stays out of every round until a human approves it', async () => {
+    const items = entries.map((e) => toImportItem(e, { batch: 'test-batch' }, now));
+    expect((await call('/api/v1/admin/import', postJson({ items }, SERVICE_TOKEN, { 'idempotency-key': 'bank-import-spoiler' }))).status).toBe(200);
+    await seedMany(h.db, 3, 3);
+    const draft = (await h.db.prepare(`SELECT id, quality_state FROM questions WHERE event_id = 'test-gta-trailer'`).first<{ id: string; quality_state: string }>())!;
+    expect(draft.quality_state).toBe('candidate');
+    const r = await scheduleRounds(h.db, { startDate: TODAY, days: 1 });
+    expect(r.error).toBeNull();
+    expect(await h.db.prepare('SELECT COUNT(*) AS n FROM daily_round_items WHERE question_id = ?').bind(draft.id).first()).toEqual({ n: 0 });
   });
 });

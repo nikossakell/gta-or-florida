@@ -13,7 +13,10 @@
  *  - Eligibility is services/eligibility.ts (shared with the public endpoint). Each item insert
  *    re-checks "still approved under the same audit row", so a revoke that lands between planning
  *    and writing fails the whole batch, which is re-planned once.
- *  - Spoilers are left out unless `includeSpoilers`. Nothing is invented: only approved questions.
+ *  - Questions flagged `spoiler` are scheduled like any other approved question (spoiler policy, Nov 2026:
+ *    minor GTA story context is allowed; major twists, endings and deaths are kept out at editorial review,
+ *    i.e. never approved). The flag stays as metadata; `includeSpoilers: false` still leaves them out.
+ *    Nothing is invented: only approved questions.
  */
 import { addDays, cryptoRng, daysBetween, isIsoDate, planSchedule, utcDate, type BankQuestion, type PlannedDay, type Rng, type ScheduleResponse, type ScheduledUse } from '@gof/core';
 import { DAILY_SIZE, EVENT_COOLDOWN_DAYS, LOW_INVENTORY_DAYS, MAX_SCHEDULE_DAYS, SCHEDULE_AHEAD_DAYS } from '@gof/config';
@@ -26,6 +29,7 @@ export type ScheduleOptions = {
   dryRun?: boolean;
   /** Event cooldown in days (default EVENT_COOLDOWN_DAYS). */
   cooldownDays?: number;
+  /** Default true: approved questions flagged as spoilers are eligible. Pass false to leave them out. */
   includeSpoilers?: boolean;
   /** Write the plannable prefix when the full period cannot be planned (cron). */
   allowPartial?: boolean;
@@ -123,7 +127,8 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
   const epoch = epochMeta ?? opts.startDate;
   const keptDays = new Set(existing.results.map((r) => r.day));
   const usageCounts = new Map(usage.results.map((r) => [r.question_id, r.n]));
-  const bank = opts.includeSpoilers ? pool : pool.filter((q) => !q.spoiler);
+  const includeSpoilers = opts.includeSpoilers !== false;
+  const bank = includeSpoilers ? pool : pool.filter((q) => !q.spoiler);
   const approvalOf = new Map(pool.map((q) => [q.id, q.approvalLogId]));
 
   const dates: string[] = [];
@@ -163,7 +168,7 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
       runwayDays: 0,
       scheduledAhead: 0,
     },
-    settings: { startDate: opts.startDate, days: opts.days, cooldownDays: cooldown, includeSpoilers: !!opts.includeSpoilers, dryRun: !!opts.dryRun, allowPartial: !!opts.allowPartial },
+    settings: { startDate: opts.startDate, days: opts.days, cooldownDays: cooldown, includeSpoilers, dryRun: !!opts.dryRun, allowPartial: !!opts.allowPartial },
   };
 
   const stmts: D1PreparedStatement[] = [];
@@ -182,7 +187,7 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
             `INSERT INTO daily_round_items (day, position, question_id)
              VALUES (?, ?, (SELECT id FROM questions WHERE id = ? AND quality_state = 'approved' AND approval_log_id IS ? AND (spoiler = 0 OR ?)))`,
           )
-          .bind(day.date, i + 1, q.id, approvalOf.get(q.id) ?? null, opts.includeSpoilers ? 1 : 0),
+          .bind(day.date, i + 1, q.id, approvalOf.get(q.id) ?? null, includeSpoilers ? 1 : 0),
       ),
     );
     stmts.push(

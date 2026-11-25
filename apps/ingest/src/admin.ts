@@ -54,6 +54,7 @@ const OPTIONS: ParseArgsConfig['options'] = {
   'dry-run': { type: 'boolean' },
   cooldown: { type: 'string' },
   'include-spoilers': { type: 'boolean' },
+  'exclude-spoilers': { type: 'boolean' },
   'allow-partial': { type: 'boolean' },
   'event-id': { type: 'string' },
   spoiler: { type: 'boolean' },
@@ -69,7 +70,7 @@ const HELP = `Admin commands (talk to the Worker's protected API):
   candidates:show   --id <question|incident id|incident key>
   questions:approve --id <q> --play-title "…" --explanation "…" [--game GTA_III] [--location-verified --published-at YYYY-MM-DD --publisher "…"]
                     [--category weird] [--difficulty 2] [--not-duplicate] [--link-verified-manually]
-                    [--event-id <shared-event-id>] [--spoiler]   (group questions about the same event; spoilers are not scheduled by default)
+                    [--event-id <shared-event-id>] [--spoiler]   (group questions about the same event; --spoiler is metadata: minor spoilers are scheduled like any other question)
                     Independent Factual Summary (your own words about verified facts; no reuse of the source's wording):
                     --factual-summary --verified-date YYYY-MM-DD --verified-location "Pace, Florida" --evidence-url <https> [--evidence-url …]
                     --attest-human-written --attest-incident --attest-claims --attest-privacy [--verification-notes "…"]
@@ -83,7 +84,7 @@ const HELP = `Admin commands (talk to the Worker's protected API):
   withdraw          (--question <q> | --day YYYY-MM-DD) --reason "…" [--message "public text"]
   incidents:merge   --id <incident> --into <incident> --reason "…"
   incidents:unmerge --id <incident> --reason "…"
-  schedule          [--days 30|90] [--start YYYY-MM-DD] [--cooldown 30] [--dry-run] [--include-spoilers] [--allow-partial]
+  schedule          [--days 30|90] [--start YYYY-MM-DD] [--cooldown 30] [--dry-run] [--exclude-spoilers] [--allow-partial]
                     plans the whole period first; writes nothing if it cannot be filled (unless --allow-partial)
   schedule:top-up   [--days 30]   what the cron does: fill what it can up to N days ahead, then publish due days
   sources:sync      copy packages/config/sources.policy.json (as deployed) into D1
@@ -128,7 +129,7 @@ function showSource(id: string | undefined): number {
 export function formatSchedule(r: ScheduleResponse & { published?: number; todayPlayable?: boolean }): string {
   const s = r.settings;
   const lines = [
-    `${s.dryRun ? 'DRY RUN — nothing written. ' : ''}${s.startDate} + ${s.days} day(s), cooldown ${s.cooldownDays} day(s)${s.includeSpoilers ? ', spoilers included' : ''}`,
+    `${s.dryRun ? 'DRY RUN — nothing written. ' : ''}${s.startDate} + ${s.days} day(s), cooldown ${s.cooldownDays} day(s)${s.includeSpoilers ? '' : ', spoiler-flagged questions excluded'}`,
     `  ${r.ok ? 'OK' : 'INFEASIBLE'}: ${r.added.length} day(s) ${s.dryRun ? 'would be added' : 'added'}, ${r.kept.length} existing day(s) kept unchanged`,
   ];
   if (r.added.length) lines.push(`  splits (Florida/GTA): ${r.added.map((d) => `${d.date.slice(5)} ${d.floridaCount}/${5 - d.floridaCount}`).join(' · ')}`);
@@ -308,12 +309,15 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error('--days must be 1-90 (30 or 90 are the usual horizons)');
       const cooldown = str('cooldown');
       if (cooldown !== undefined && !/^\d{1,3}$/.test(cooldown)) throw new Error('--cooldown must be a whole number of days');
+      // --include-spoilers is still accepted: it is now the default behaviour.
+      if (flag('include-spoilers') && flag('exclude-spoilers')) throw new Error('--include-spoilers and --exclude-spoilers are mutually exclusive');
       const r = await api.schedule(days, {
         // An explicit start date (default today, UTC) makes this a plain generation request: complete or nothing.
         startDate: str('start') ?? new Date().toISOString().slice(0, 10),
         ...(flag('dry-run') ? { dryRun: true } : {}),
         ...(cooldown !== undefined ? { cooldownDays: Number(cooldown) } : {}),
-        ...(flag('include-spoilers') ? { includeSpoilers: true } : {}),
+        // Spoiler-flagged questions are eligible by default; --exclude-spoilers leaves them out.
+        ...(flag('exclude-spoilers') ? { includeSpoilers: false } : {}),
         ...(flag('allow-partial') ? { allowPartial: true } : {}),
       });
       if (json) print(r, true);
