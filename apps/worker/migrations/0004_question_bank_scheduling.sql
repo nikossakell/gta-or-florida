@@ -3,7 +3,8 @@
 --  * questions.event_id: questions describing the same underlying event share it. NULL = the
 --    question's own incident (every existing question), so the scheduler uses
 --    COALESCE(event_id, incident_id). The event cooldown and "one question per event per day" apply to it.
---  * questions.spoiler: 1 = left out of scheduling unless explicitly included.
+--  * questions.spoiler: 1 = contains minor GTA story context. Metadata only: approved spoiler questions are
+--    scheduled by default (spoiler policy, Nov 2026); major spoilers are rejected at editorial review.
 --  * daily_rounds.florida_count may be 0-5 (each slot is drawn 50/50; the split is no longer fixed 2/3).
 --  * daily_round_items: a question may appear again on a later day (after the event cooldown), so the
 --    global UNIQUE(question_id) becomes UNIQUE(day, question_id).

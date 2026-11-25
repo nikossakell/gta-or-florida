@@ -61,7 +61,7 @@ describe('scheduleRounds (verified bank, pseudo-random days)', () => {
     const days = await expectValidSchedule(30);
     expect([...days.values()].map((d) => d[0]!.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(r.added.map((a) => a.floridaCount)).toEqual(floridaPerDay(days));
-    expect(r.settings).toMatchObject({ startDate: START, days: 10, cooldownDays: 30, includeSpoilers: false });
+    expect(r.settings).toMatchObject({ startDate: START, days: 10, cooldownDays: 30, includeSpoilers: true });
   });
 
   it('persists any split, including 0 Florida / 5 GTA and 5 Florida / 0 GTA (no fixed ratio)', async () => {
@@ -160,19 +160,40 @@ describe('scheduleRounds (verified bank, pseudo-random days)', () => {
     }
   });
 
-  it('leaves spoilers out unless they are explicitly included', async () => {
-    await seedMany(h.db, 5, 5);
-    const spoiler = (await h.db.prepare(`SELECT id FROM questions WHERE answer_kind = 'GTA' ORDER BY id LIMIT 1`).first<{ id: string }>())!.id;
-    await h.db.prepare('UPDATE questions SET spoiler = 1 WHERE id = ?').bind(spoiler).run();
-    const r = await scheduleRounds(h.db, { startDate: START, days: 1, rng: createRng('sp') });
-    expect(r).toMatchObject({ ok: true, inventory: { excludedSpoilers: 1, eligibleGta: 4 } });
-    expect([...(await rounds()).values()].flat().map((x) => x.question_id)).not.toContain(spoiler);
-    await h.reset();
+  it('schedules approved spoiler-flagged questions by default; includeSpoilers: false still leaves them out', async () => {
+    // Spoiler policy (Nov 2026): minor GTA story context is allowed in daily rounds; the flag is kept as metadata.
     await seedMany(h.db, 0, 5);
-    const only = (await h.db.prepare(`SELECT id FROM questions ORDER BY id LIMIT 1`).first<{ id: string }>())!.id;
-    await h.db.prepare('UPDATE questions SET spoiler = 1 WHERE id = ?').bind(only).run();
-    expect((await scheduleRounds(h.db, { startDate: START, days: 1, rng: createRng('sp2') })).ok).toBe(false);
-    expect((await scheduleRounds(h.db, { startDate: START, days: 1, includeSpoilers: true, rng: createRng('sp2') })).ok).toBe(true);
+    await h.db.prepare('UPDATE questions SET spoiler = 1').run();
+    const r = await scheduleRounds(h.db, { startDate: START, days: 1, rng: createRng('sp') });
+    expect(r).toMatchObject({ ok: true, inventory: { excludedSpoilers: 0, eligibleGta: 5 }, settings: { includeSpoilers: true } });
+    const all = (await h.db.prepare('SELECT id FROM questions ORDER BY id').all<{ id: string }>()).results.map((x) => x.id);
+    expect([...(await rounds()).values()].flat().map((x) => x.question_id).sort()).toEqual(all);
+    // A run can still opt out (future filtering): with every GTA question flagged, nothing is plannable.
+    const out = await scheduleRounds(h.db, { startDate: addDays(START, 1), days: 1, cooldownDays: 0, includeSpoilers: false, rng: createRng('sp2') });
+    expect(out).toMatchObject({ ok: false, inventory: { excludedSpoilers: 5, eligibleGta: 0 }, settings: { includeSpoilers: false } });
+    expect((await rounds()).size).toBe(1);
+  });
+
+  it('a spoiler flag never bypasses review: unapproved or rejected spoiler questions are not scheduled', async () => {
+    // Major story spoilers are kept out by editorial review (they are never approved), not by a scheduler field.
+    await seedMany(h.db, 0, 7);
+    const [candidate, rejected] = (await h.db.prepare('SELECT id FROM questions ORDER BY id LIMIT 2').all<{ id: string }>()).results.map((x) => x.id);
+    await h.db.prepare(`UPDATE questions SET spoiler = 1, quality_state = 'candidate' WHERE id = ?`).bind(candidate).run();
+    await h.db.prepare(`UPDATE questions SET spoiler = 1, quality_state = 'rejected' WHERE id = ?`).bind(rejected).run();
+    const r = await scheduleRounds(h.db, { startDate: START, days: 1, rng: createRng('sp3') });
+    expect(r).toMatchObject({ ok: true, inventory: { eligibleGta: 5, excludedSpoilers: 0 } });
+    const used = [...(await rounds()).values()].flat().map((x) => x.question_id);
+    expect(used).toHaveLength(5);
+    expect(used).not.toContain(candidate);
+    expect(used).not.toContain(rejected);
+  });
+
+  it('spoiler-flagged questions still obey the event cooldown and the one-event-per-day rule', async () => {
+    await seedMany(h.db, 6, 6);
+    await h.db.prepare(`UPDATE questions SET spoiler = 1 WHERE answer_kind = 'GTA'`).run();
+    const r = await scheduleRounds(h.db, { startDate: START, days: 2, cooldownDays: 2, rng: createRng('sp4') });
+    expect(r.ok).toBe(true);
+    await expectValidSchedule(2);
   });
 
   it('generates a 90-day horizon in one run; longer periods are refused', async () => {

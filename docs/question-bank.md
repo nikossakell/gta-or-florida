@@ -8,7 +8,7 @@ The game is a verified question bank that a human fills every 3–4 months, plus
 | --- | --- |
 | Question (`id`, `headline`, `origin`, `status`, `sourceUrl`) | D1 `questions` (`play_title`, `answer_kind`, `quality_state`) and its `source_references.original_url` |
 | `eventId` | `questions.event_id`. Empty means the question's own incident. Questions about the same underlying event share it. |
-| `spoiler` | `questions.spoiler`. Spoilers are left out of scheduling unless you include them. |
+| `spoiler` | `questions.spoiler`. Metadata only: approved spoiler-flagged questions are scheduled like any other (see [GTA spoiler policy](#gta-spoiler-policy)). |
 | Draft / approved / rejected | `quality_state` `candidate` / `approved` / `rejected` (also `retired`, for withdrawn questions) |
 | `DailyChallenge { date, questionIds }` | `daily_rounds` (day, number, status, Florida count) and `daily_round_items` (day, position 1–5, question) |
 | Player progress and scores | The player's browser only (unchanged) |
@@ -62,7 +62,7 @@ The flow is Discover → Verify → Draft → Review → Approve → Store → S
    ```
 
    - Add `--event-id <id>` to group a question with others about the same event.
-   - Add `--spoiler` to keep it out of scheduling (for example, unreleased GTA VI story).
+   - Add `--spoiler` when the question carries minor GTA story context. It is still scheduled; the flag is kept for filtering. A question that would reveal a **major** spoiler is not flagged: it is rejected (see [GTA spoiler policy](#gta-spoiler-policy)).
    - After approval, change only that metadata with `questions:edit --id <q> --event-id … | --spoiler | --no-spoiler`.
    - To drop a question: `questions:reject` for candidates, `withdraw --question` for anything already scheduled.
 5. **Generate the schedule** (next section).
@@ -129,15 +129,51 @@ The simulation below plans 90 days under a 30-day cooldown, 20 seeds per bank, w
 | `difficulty` | 1–3 (default 2) |
 | `game` | GTA only (e.g. `GTA_V`, `GTA_VI`) |
 | `location`, `publisher`, `publishedAt` | Florida: needed at approval |
-| `spoiler` | Optional; default `false` |
+| `spoiler` | Optional; default `false`. Marks minor story context; does not keep the question out of rounds. |
 | `notes` | Optional, internal |
+
+## GTA spoiler policy
+
+*Revised November 2026.* Players see a short footer notice: “Some questions may contain minor spoilers from the Grand Theft Auto series.” There is no modal, consent step or extra gameplay step.
+
+**Allowed in daily rounds:**
+
+- Mission events from GTA III, Vice City, San Andreas, GTA IV (and its episodes) and GTA V, **including main-story missions**.
+- GTA Online mission events, when the incident is stable and verifiable (not a target that changes on every replay).
+- Minor contextual story spoilers: who hires whom, what a job involves, a character’s ordinary situation.
+
+**Excluded (never approved):**
+
+- Major plot twists and betrayals.
+- Game endings, final missions and their choices.
+- Deaths of significant characters.
+- Major GTA VI story revelations. Stay conservative with GTA VI: setting and premise from official material only.
+- Events that only make sense with sensitive plot information.
+
+**How it is enforced:** by the reviewer, not by a scheduler field. A question that would reveal a major spoiler is rejected (`questions:reject`) or, if already scheduled, withdrawn. The `spoiler` flag marks *minor* context; approved questions with it are scheduled normally and it stays available for future filtering (`--exclude-spoilers`). The public API never exposes the flag.
+
+**Headlines** (player-facing, before the guess) must not contain:
+
+- character names;
+- fictional city or location names (Vice City, Los Santos, Liberty City, Fort Zancudo…);
+- recognizable mission names;
+- obvious GTA-specific references (game titles, in-game brands, Rockstar).
+
+Describe the event generically without changing what happened. For example, “Trevor Philips stole a helicopter from Fort Zancudo” becomes “A man stole a helicopter from a heavily guarded military base.” Apply the same spoiler-conscious wording to explanations where practical: an explanation may name the game and mission, but should not add story context that the event does not need.
+
+**Researching GTA IV and its episodes:**
+
+- Main-story missions are eligible. Prefer early and mid-game missions and self-contained side content (random characters, Brucie’s and Stevie’s side jobs, club management).
+- Skip the endings and anything that hinges on the revenge storyline’s outcome, the deaths of major characters or a betrayal.
+- In player text, describe roles, not names (“a cousin’s friend”, “a club owner”).
+- Verify each mission against two independent references (e.g. GTA Base and Grand Theft Wiki), as for other games.
 
 ## Generating the schedule
 
 ```bash
 npm run admin -- schedule --days 30 --dry-run    # plan and report, write nothing
 npm run admin -- schedule --days 30              # write the next 30 days (from today, UTC)
-npm run admin -- schedule --days 90 --start 2027-01-01 [--cooldown 30] [--include-spoilers]
+npm run admin -- schedule --days 90 --start 2027-01-01 [--cooldown 30] [--exclude-spoilers]
 npm run admin -- schedule:top-up                 # what the cron does (see below)
 ```
 
@@ -149,7 +185,7 @@ npm run admin -- schedule:top-up                 # what the cron does (see below
   - no question or event twice in a day;
   - no event within the cooldown (default 30 days) of another showing, before or after, including days that already exist;
   - only approved, eligible questions;
-  - spoilers excluded unless `--include-spoilers`.
+  - spoiler-flagged questions are eligible like any other; `--exclude-spoilers` (API: `includeSpoilers: false`) leaves them out of one run.
 - **Preferences**, in order: least-used questions first, then no near-identical headlines on one day, then variety of category, publisher, game and difficulty.
 - **Questions are reused** once their event's cooldown has passed.
 - **All or nothing.** The whole period is planned before anything is written. If it cannot be filled, nothing is written and the command explains why. For example:

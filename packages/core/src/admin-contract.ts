@@ -221,7 +221,7 @@ export const reviewSchema = s.object({
   factual: s.optional(factualAttestationSchema),
   /** Group with other questions about the same event (approve/edit; editable on approved questions too). */
   eventId: s.optional(eventIdSchema),
-  /** Mark as a spoiler (excluded from scheduling by default). Editable on approved questions too. */
+  /** Mark as a spoiler (metadata: minor spoilers are scheduled like any other question; major ones are never approved). Editable on approved questions too. */
   spoiler: s.optional(s.boolean()),
 });
 export type ReviewRequest = Infer<typeof reviewSchema>;
@@ -233,7 +233,7 @@ export const scheduleSchema = s.object({
   dryRun: s.optional(s.boolean()),
   /** Event cooldown in days (default EVENT_COOLDOWN_DAYS). */
   cooldownDays: s.optional(s.int({ min: 0, max: 365 })),
-  /** Include questions marked as spoilers (excluded by default). */
+  /** Default true: approved questions marked as spoilers are scheduled. false leaves them out. */
   includeSpoilers: s.optional(s.boolean()),
   /** Write the days that can be planned even if the whole period cannot (the cron does this). */
   allowPartial: s.optional(s.boolean()),
@@ -272,7 +272,7 @@ export type ScheduleResponse = {
     /** Eligible questions that were never scheduled. */
     unusedFlorida: number;
     unusedGta: number;
-    /** Eligible (and, unless included, non-spoiler) questions / distinct events in the bank. */
+    /** Eligible questions / distinct events in the bank (without spoiler-flagged ones when includeSpoilers is false). */
     eligibleFlorida: number;
     eligibleGta: number;
     floridaEvents: number;
