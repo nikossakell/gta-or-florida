@@ -206,3 +206,30 @@ describe('cooldown boundary (off-by-one)', () => {
     if (r.ok) for (const d of r.days) expect(new Set(d.questions.map((q) => q.eventId)).size).toBe(5);
   });
 });
+
+describe('robustness', () => {
+  it('never fills a slot with a question whose answer differs from its event side', () => {
+    const qs = bank(12, 12);
+    // A GTA question wrongly grouped under a Florida event (refused at import/approval; defended here too).
+    qs.push({ ...qs.find((q) => q.answer === 'GTA')!, id: 'g-mixed', eventId: 'ev-f0', title: 'Crew blimp wrongly grouped with a resident event' });
+    for (let s = 0; s < 10; s++) {
+      const r = planSchedule({ questions: qs, history: [], dates: dateRange(START, 5), cooldownDays: 3, rng: createRng(`mix${s}`) });
+      expect(r.ok).toBe(true);
+      if (!r.ok) continue;
+      for (const d of r.days) {
+        expect(d.floridaCount).toBe(d.questions.filter((q) => q.answer === 'FLORIDA').length);
+        expect(d.questions.map((q) => q.id)).not.toContain('g-mixed');
+      }
+    }
+  });
+
+  it('stays fast and least-used-first when usage counts are far apart', () => {
+    const qs = bank(40, 40);
+    const usageCounts = new Map(qs.map((q, i) => [q.id, i % 2 ? 400 : 0]));
+    const t0 = performance.now();
+    const r = planSchedule({ questions: qs, history: [], usageCounts, dates: dateRange(START, 4), cooldownDays: 30, rng: createRng('spread') });
+    expect(performance.now() - t0).toBeLessThan(2000);
+    expect(r.ok).toBe(true);
+    if (r.ok) for (const d of r.days) for (const q of d.questions) expect(usageCounts.get(q.id)).toBe(0);
+  });
+});

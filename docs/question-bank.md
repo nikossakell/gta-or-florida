@@ -64,6 +64,7 @@ The flow is Discover → Verify → Draft → Review → Approve → Store → S
    - Add `--event-id <id>` to group a question with others about the same event.
    - Add `--spoiler` when the question carries minor GTA story context. It is still scheduled; the flag is kept for filtering. A question that would reveal a **major** spoiler is not flagged: it is rejected (see [GTA spoiler policy](#gta-spoiler-policy)).
    - After approval, change only that metadata with `questions:edit --id <q> --event-id … | --spoiler | --no-spoiler`.
+   - An event belongs to one answer: import, approval and `--event-id` refuse to group a Florida question with a GTA one (`EVENT_SIDE_CONFLICT`). A question already on a future scheduled day cannot change its event (the cooldown was planned with the old one); withdraw it from that day first.
    - To drop a question: `questions:reject` for candidates, `withdraw --question` for anything already scheduled.
 5. **Generate the schedule** (next section).
 

@@ -39,6 +39,20 @@ export function logStmt(db: D1Database, e: LogEntry): D1PreparedStatement {
     .bind(e.entityType, e.entityId, e.decision, e.reason ?? null, e.actorType, e.actorId, e.policyVersion ?? null, e.details === undefined ? null : JSON.stringify(e.details));
 }
 
+/**
+ * Another live question (candidate or approved) already uses this event for the OTHER answer.
+ * An event belongs to one side: the scheduler fills Florida/GTA slots per event.
+ */
+export async function eventSideConflict(db: D1Database, eventId: string, side: 'FLORIDA' | 'GTA', exceptQuestionId = ''): Promise<string | null> {
+  const row = await db
+    .prepare(
+      `SELECT id FROM questions WHERE COALESCE(event_id, incident_id) = ? AND answer_kind <> ? AND id <> ? AND quality_state IN ('candidate', 'approved') LIMIT 1`,
+    )
+    .bind(eventId, side, exceptQuestionId)
+    .first<{ id: string }>();
+  return row?.id ?? null;
+}
+
 /** True for D1 constraint violations (UNIQUE / PRIMARY KEY / CHECK / FK). */
 export function isConstraintError(error: unknown): boolean {
   return /SQLITE_CONSTRAINT|UNIQUE constraint|constraint failed/i.test(String((error as Error)?.message ?? error));

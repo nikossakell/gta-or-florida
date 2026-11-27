@@ -206,19 +206,19 @@ export function planSchedule(input: PlanInput): PlanResult {
     const out: Record<Side, number[]> = { FLORIDA: [], GTA: [] };
     for (let e = 0; e < E; e++) {
       if (!usable(st, e, day)) continue;
-      const list = eventQs[e]!;
-      let best = list[0]!;
-      if (list.length > 1) {
-        let ties = 1;
-        for (let k = 1; k < list.length; k++) {
-          const i = list[k]!;
-          if (st.counts[i]! < st.counts[best]!) {
-            best = i;
-            ties = 1;
-          } else if (st.counts[i] === st.counts[best] && rng() * ++ties < 1) best = i; // reservoir tie-break
-        }
+      // Only questions whose answer matches the event's side: a mixed-side event (refused at import and
+      // approval) must never put a GTA question in a Florida slot or the reverse.
+      const side = eventSide[e]!;
+      let best = -1;
+      let ties = 0;
+      for (const i of eventQs[e]!) {
+        if (qs[i]!.answer !== side) continue;
+        if (best < 0 || st.counts[i]! < st.counts[best]!) {
+          best = i;
+          ties = 1;
+        } else if (st.counts[i] === st.counts[best] && rng() * ++ties < 1) best = i; // reservoir tie-break
       }
-      out[eventSide[e]!].push(best);
+      if (best >= 0) out[side].push(best);
     }
     return out;
   }
@@ -241,18 +241,20 @@ export function planSchedule(input: PlanInput): PlanResult {
    * then greedy diversity. A near-duplicate headline is swapped for an equally used alternative.
    */
   function pick(candidates: number[], count: number, day: number[], counts: Int32Array): void {
-    let minUse = Infinity;
-    for (const i of candidates) if (counts[i]! < minUse) minUse = counts[i]!;
+    // Usage tiers in one sort (cost independent of how far apart the counts are), each sampled at random.
+    const sorted = candidates.slice().sort((a, b) => counts[a]! - counts[b]!);
     const win: number[] = [];
-    for (let tier = minUse; win.length < WINDOW && win.length < candidates.length; tier++) {
-      const t = candidates.filter((i) => counts[i] === tier);
+    for (let start = 0; start < sorted.length && win.length < WINDOW; ) {
+      let end = start + 1;
+      while (end < sorted.length && counts[sorted[end]!] === counts[sorted[start]!]) end++;
+      const t = sorted.slice(start, end);
       const take = Math.min(t.length, WINDOW - win.length);
       for (let k = 0; k < take; k++) {
         const j = k + Math.floor(rng() * (t.length - k));
         [t[k], t[j]] = [t[j]!, t[k]!];
         win.push(t[k]!);
       }
-      if (tier > minUse + 1000) break;
+      start = end;
     }
     for (let n = 0; n < count && win.length; n++) {
       let bestIdx = 0;
