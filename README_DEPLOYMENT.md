@@ -103,10 +103,10 @@ Environment variables (Settings → Environment variables), **χωριστά** �
 |---|---|---|
 | `VITE_API_BASE_URL` | `https://gta-florida-api-production.<subdomain>.workers.dev` | `https://gta-florida-api-staging.<subdomain>.workers.dev` |
 | `VITE_PUBLIC_URL` | `https://gta-or-florida.pages.dev` (ή το domain σας) | *(κενό)* |
-| `VITE_DAILY_DRIVE` | *(κενό — παλιό UI μέχρι την έγκριση)* | `1` (νέο UI «Daily Drive») |
+| `VITE_DAILY_DRIVE` | *(κενό = νέο UI «Daily Drive», εγκεκριμένο)* · `0` = rollback στο παλιό UI | *(κενό)* |
 | `NODE_VERSION` | `22` | `22` |
 
-Το `VITE_DAILY_DRIVE` ενεργοποιεί το redesign «Daily Drive» (μόνο εμφάνιση· ίδια λογική παιχνιδιού, ίδιο API, ίδιο localStorage). Κενό = ενεργό μόνο στο `vite dev`, ανενεργό σε builds. Με `0` ή κενό, το build δεν περιέχει καθόλου κώδικα, CSS ή fonts του redesign (rollback = αφαιρέστε τη μεταβλητή και κάντε rebuild). Λεπτομέρειες: `docs/daily-drive-redesign-plan.md`.
+Το `VITE_DAILY_DRIVE` ελέγχει το redesign «Daily Drive» (μόνο εμφάνιση· ίδια λογική παιχνιδιού, ίδιο API, ίδιο localStorage). Εγκρίθηκε: κενό = **ενεργό** στο `vite dev` και στο Cloudflare Pages build (`npm run build:web`). Μένει ανενεργό μόνο στα tests και στο legacy στατικό demo (`--mode pages`, Netlify μέχρι το cutover). Rollback: `VITE_DAILY_DRIVE=0` και rebuild — τότε το build δεν περιέχει καθόλου κώδικα, CSS ή fonts του redesign. Λεπτομέρειες: `docs/daily-drive-redesign-plan.md`.
 
 Έτσι τα previews **δεν** αγγίζουν ποτέ το production D1. Το build παράγει `_headers` με CSP που επιτρέπει `connect-src` μόνο προς το συγκεκριμένο Worker origin. Χωρίς `404.html`, το Pages σερβίρει το SPA για deep links.
 
