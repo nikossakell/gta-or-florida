@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="review-token" content="__SESSION_TOKEN__" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Editorial Review</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <h1>Editorial review</h1>
+        <p class="sub">GTA or Florida · local only · reviewer <strong id="reviewer">…</strong></p>
+      </div>
+      <div class="exports" aria-label="Exports">
+        <span class="label">Export</span>
+        <button type="button" data-export="approved">Approved</button>
+        <button type="button" data-export="investigate">Investigate</button>
+        <button type="button" data-export="rejected">Rejected</button>
+        <button type="button" data-export="history">History</button>
+      </div>
+    </header>
+
+    <section class="stats" aria-label="Progress">
+      <div class="tile"><span class="n" id="s-total">–</span><span class="k">Total</span></div>
+      <div class="tile approved"><span class="n" id="s-approved">–</span><span class="k">Approved</span></div>
+      <div class="tile investigate"><span class="n" id="s-investigate">–</span><span class="k">Investigate</span></div>
+      <div class="tile rejected"><span class="n" id="s-rejected">–</span><span class="k">Rejected</span></div>
+      <div class="tile unreviewed"><span class="n" id="s-unreviewed">–</span><span class="k">Unreviewed</span></div>
+      <div class="tile progress">
+        <span class="n" id="s-progress">–</span><span class="k">Decided</span>
+        <div class="bar" aria-hidden="true"><div id="s-bar"></div></div>
+      </div>
+      <div class="tile split"><span class="k">Florida</span><span id="s-fl">–</span><span class="k">GTA</span><span id="s-gta">–</span></div>
+    </section>
+
+    <div id="banners"></div>
+
+    <section class="toolbar" aria-label="Filters">
+      <input id="q" type="search" placeholder="Search headline, event ID or source…" autocomplete="off" />
+      <select id="f-origin" aria-label="Origin"><option value="">All origins</option><option value="FLORIDA">Florida</option><option value="GTA">GTA</option></select>
+      <select id="f-status" aria-label="Status">
+        <option value="">All statuses</option><option value="unreviewed">Unreviewed</option><option value="approved">Approved</option><option value="investigate">Further investigation</option><option value="rejected">Rejected</option>
+      </select>
+      <select id="f-difficulty" aria-label="Difficulty"><option value="">Any difficulty</option><option value="1">1 · Easy</option><option value="2">2 · Medium</option><option value="3">3 · Hard</option></select>
+      <select id="f-source" aria-label="Source"><option value="">All sources</option></select>
+      <select id="f-warning" aria-label="Editorial warnings"><option value="">All warnings</option></select>
+      <span class="count" id="count"></span>
+      <div class="views" role="tablist">
+        <button type="button" id="v-review" role="tab" aria-selected="true">Review</button>
+        <button type="button" id="v-list" role="tab" aria-selected="false">List</button>
+      </div>
+    </section>
+
+    <main>
+      <section id="list-view" hidden>
+        <table class="list">
+          <thead><tr><th>#</th><th>Status</th><th>Origin</th><th>Diff.</th><th>Headline</th><th>Source</th><th>Audit</th></tr></thead>
+          <tbody id="list-body"></tbody>
+        </table>
+      </section>
+
+      <section id="review-view">
+        <nav class="pager">
+          <button type="button" id="prev">← Previous</button>
+          <span id="pos">–</span>
+          <button type="button" id="next">Next →</button>
+          <button type="button" id="next-unreviewed" class="ghost">Next unreviewed ⇥</button>
+        </nav>
+
+        <article id="card" class="card">
+          <p class="empty">Loading…</p>
+        </article>
+      </section>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

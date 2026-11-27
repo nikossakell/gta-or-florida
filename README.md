@@ -61,6 +61,10 @@ npm run admin -- schedule --days 30
 npm run legacy:export && npm run legacy:import -- --to <worker-url>   # μεταφορά της παλιάς SQLite
 ```
 
+Editorial review στο browser (τοπικά, χωρίς staging/production): `npm run review` και άνοιγμα του `http://127.0.0.1:4317/`.
+Το dashboard τρέχει τον ίδιο Worker in-process πάνω σε τοπική D1 και κάθε Approve περνάει από το υπάρχον `questions:approve`
+(factual summary, attestations, `review_log`). Οδηγίες: [`apps/review/README.md`](apps/review/README.md).
+
 Μόνο μεταβλητές `VITE_*` φτάνουν στο browser bundle — ποτέ secrets εκεί. Όλες οι ρυθμίσεις: `.env.example`.
 
 ---
@@ -80,6 +84,7 @@ apps/worker/          Cloudflare Worker (Wrangler) + D1
 apps/ingest-worker/   Cloudflare ingestion Worker: Cron Trigger → Workflow (bounded steps) → API Worker (Service Binding)
 apps/ingest/          Κοινή λογική ingestion (runtime-neutral) + τοπικά CLI: adapters (gdelt, grandtheftwiki, rss, http), filters, deduplicate,
                       verify (SSRF-safe link check), classify (Workers AI REST), import (Worker client), run, admin CLI, legacy
+apps/review/          Τοπικό editorial review dashboard (127.0.0.1): Worker in-process + τοπική D1, approve/investigate/reject
 apps/web/             React 19 + Vite + Tailwind CSS v4 + TanStack Query + TanStack Router (Cloudflare Pages)
 scripts/              static demo (validate/build-pages/schedule), check-config, seed-local, smoke
 data/                 sources.json (discovery config), questions.approved.json (dev fixtures), daily-schedule.json (static demo)
