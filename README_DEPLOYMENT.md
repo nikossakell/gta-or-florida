@@ -329,6 +329,21 @@ npm run admin -- questions:approve --id <q> --play-title "…" --explanation "�
 
 **Απόσυρση:** `npm run admin -- withdraw --question <q> --reason "…"` → ο σημερινός/παλιός γύρος που την περιέχει γίνεται `ROUND_WITHDRAWN` για όλους· οι μελλοντικοί γύροι που την περιέχουν σβήνονται και ξαναγεμίζουν από το scheduler. `withdraw --day YYYY-MM-DD` αποσύρει ολόκληρη ημέρα. Ό,τι γίνεται καταγράφεται στο `review_log`.
 
+### 9b. Τράπεζα ερωτήσεων από το editorial review dashboard
+
+Απόφαση owner (2026-11-28): οι ερωτήσεις της τράπεζας που εγκρίθηκαν στο dashboard (`npm run review`) είναι κείμενα γραμμένα με τη βοήθεια AI, με γεγονότα επαληθευμένα στην πηγή κατά την έρευνα και διατύπωση εγκεκριμένη αυτούσια από τον owner. Εγκρίνονται στον Worker ως **ελεγμένα drafts** (`textOrigin: machine_draft_reviewed`, `humanWritten: false`) — ποτέ ως «γραμμένα από τον reviewer». Με το export **Approved** του dashboard:
+
+```bash
+export ADMIN_API_URL=https://gta-florida-api-staging.<subdomain>.workers.dev ADMIN_TOKEN=<admin token> REVIEWER=<όνομα>
+INGESTION_API_URL=$ADMIN_API_URL INGESTION_IMPORT_TOKEN=<service token> npm run bank:import -- --file approved-export.json --env staging
+npm run bank:approve -- --file approved-export.json --env staging --dry-run
+npm run bank:approve -- --file approved-export.json --env staging
+npm run admin -- schedule --days 30 --dry-run && npm run admin -- schedule --days 30
+# production: ίδια βήματα με --env production --allow-production και τα production URLs/tokens
+```
+
+Το `bank:approve` δέχεται μόνο ερωτήσεις με την εγγραφή έγκρισης του dashboard, ελέγχει ότι το κείμενο στον Worker είναι ακριβώς το εγκεκριμένο, κάνει νέο link check (2″ ανά host) και εγκρίνει μέσω του κανονικού `/review` (όλοι οι έλεγχοι του Worker ισχύουν). Αποτυχημένο link → ανοίξτε το και ξανατρέξτε με `--link-verified-manually`. Ξανατρέξιμο με ασφάλεια (οι εγκεκριμένες παραλείπονται).
+
 ## 10. Scheduling
 
 Πλήρης περιγραφή (στα αγγλικά): **`docs/question-bank.md`** — τράπεζα επαληθευμένων ερωτήσεων, μορφή batch, `bank:import`, έγκριση, κανόνες προγραμματισμού.

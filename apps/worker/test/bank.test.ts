@@ -6,8 +6,9 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createRng, type ChallengeResponse, type ScheduleResponse } from '@gof/core';
-import { toImportItem, type BankEntry } from '../../ingest/src/bank-item.ts';
-import { scheduleRounds } from '../src/services/scheduling.ts';
+import { entryKey, toImportItem, type BankEntry } from '../../ingest/src/bank-item.ts';
+import { approvalRequest } from '../../ingest/src/bank-approval.ts';
+import { eligiblePool, scheduleRounds } from '../src/services/scheduling.ts';
 import { ADMIN_TOKEN, SERVICE_TOKEN, createHarness, postJson, seedMany, type Harness } from './harness.ts';
 
 let h: Harness;
@@ -91,6 +92,48 @@ describe('curated bank import', () => {
     expect((await edit({ eventId: 'Not Valid!' })).status).toBe(400);
     const log = await h.db.prepare(`SELECT decision, details FROM review_log WHERE entity_id = ? AND decision = 'edited'`).bind(id).first<{ details: string }>();
     expect(JSON.parse(log!.details)).toEqual({ eventId: 'shared-event-1', spoiler: true });
+  });
+});
+
+describe('approving reviewed bank drafts (owner decision 2026-11-28)', () => {
+  const decision = { reviewer: 'owner', at: '2026-11-20T20:00:00.000Z' };
+  const idOf = async (e: BankEntry) =>
+    (await h.db.prepare('SELECT q.id FROM questions q JOIN incidents i ON i.id = q.incident_id WHERE i.incident_key = ?').bind(`bank:${entryKey(e)}`).first<{ id: string }>())!.id;
+  const approve = (body: unknown) => call('/api/v1/admin/review', postJson(body, ADMIN_TOKEN, { 'x-actor': 'owner' }));
+  const importAll = () => call('/api/v1/admin/import', postJson({ items: [entries[0]!, entries[2]!].map((e) => toImportItem(e, { batch: 'reviewed' }, now)) }, SERVICE_TOKEN, { 'idempotency-key': 'reviewed-bank-1' }));
+
+  it('approves the exact reviewed text as a machine_draft_reviewed factual summary, which is then schedulable', async () => {
+    await importAll();
+    for (const e of [entries[0]!, entries[2]!]) {
+      const r = await approve(approvalRequest(e, await idOf(e), decision, { manual: true }));
+      expect(r.status, JSON.stringify(await r.clone().json())).toBe(200);
+    }
+    const log = await h.db.prepare(`SELECT details FROM review_log WHERE decision = 'approved:factual_summary' LIMIT 1`).first<{ details: string }>();
+    expect(JSON.parse(log!.details).factual).toMatchObject({ humanWritten: false, textOrigin: 'machine_draft_reviewed', incidentVerified: true });
+    expect(JSON.parse(log!.details).factual.notes).toMatch(/AI-assisted draft[\s\S]*approved unchanged by owner/);
+    const pool = await eligiblePool(h.db, false, 'staging');
+    expect(pool.map((q) => q.id).sort()).toEqual([await idOf(entries[0]!), await idOf(entries[2]!)].sort());
+  });
+
+  it('refuses a reviewed-draft approval whose text was changed, and never accepts it as human-written by default', async () => {
+    await importAll();
+    const id = await idOf(entries[0]!);
+    const changed = approvalRequest({ ...entries[0]!, headline: 'A heron kept stealing bait from one pier for a whole month' }, id, decision, { manual: true });
+    const r = await approve(changed);
+    expect(r.status).toBe(422);
+    expect(JSON.stringify(await r.json())).toMatch(/MACHINE_DRAFT_CHANGED/);
+    const both = approvalRequest(entries[0]!, id, decision, { manual: true });
+    both.factual = { ...both.factual!, humanWritten: true };
+    expect(JSON.stringify(await (await approve(both)).json())).toMatch(/FACTUAL_ORIGIN_CONFLICT/);
+  });
+
+  it('machine_draft_reviewed stays refused for anything that is not a curated bank draft', async () => {
+    await seedMany(h.db, 0, 0);
+    await call('/api/v1/admin/import', postJson({ items: [toImportItem(entries[0]!, { batch: 'x' }, now)].map((i) => ({ ...i, incidentKey: 'fl:not-a-bank-key' })) }, SERVICE_TOKEN, { 'idempotency-key': 'not-bank-key-1' }));
+    const q = await h.db.prepare(`SELECT q.id FROM questions q JOIN incidents i ON i.id = q.incident_id WHERE i.incident_key = 'fl:not-a-bank-key'`).first<{ id: string }>();
+    const r = await approve(approvalRequest(entries[0]!, q!.id, decision, { manual: true }));
+    expect(r.status).toBe(422);
+    expect(JSON.stringify(await r.json())).toMatch(/MACHINE_DRAFT_MISSING/);
   });
 });
 

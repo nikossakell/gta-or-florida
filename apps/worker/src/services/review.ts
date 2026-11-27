@@ -9,6 +9,7 @@ import {
   DEFAULT_WITHDRAWN_MESSAGE,
   explanationProblems,
   hostMatches,
+  MANUAL_PROVIDER,
   nearCopyProblems,
   OFFICIAL_PROVIDER,
   placeholderProblems,
@@ -145,7 +146,12 @@ function sourceHosts(row: Pick<CandidateRow, 'source_id' | 'source_host'>): stri
  * Replaces ONLY the reuse-rights check of the licensed path; every other check still applies.
  */
 export function factualSummaryProblems(
-  row: Pick<CandidateRow, 'kind' | 'provider' | 'source_id' | 'source_host' | 'license_status' | 'original_title' | 'original_url'> & { facts?: string | null },
+  row: Pick<CandidateRow, 'kind' | 'provider' | 'source_id' | 'source_host' | 'license_status' | 'original_title' | 'original_url'> & {
+    facts?: string | null;
+    incident_key?: string;
+    play_title?: string;
+    explanation?: string;
+  },
   req: Pick<ReviewRequest, 'playTitle' | 'explanation'> & { factual?: FactualAttestation },
   ctx: { appEnv?: string; now: Date },
 ): string[] {
@@ -171,8 +177,20 @@ export function factualSummaryProblems(
     } catch {
       draft = null;
     }
-    if (row.provider !== OFFICIAL_PROVIDER || !draft) out.push('MACHINE_DRAFT_MISSING: only official-report candidates with a facts-first draft can use textOrigin machine_draft_reviewed');
-    else if (!Array.isArray(draft.problems) || draft.problems.length > 0) out.push('MACHINE_DRAFT_INVALID: the stored draft failed validation; write the text yourself (textOrigin human_written)');
+    // Curated question-bank candidates (bank:import) are AI-assisted drafts that the owner reviewed before
+    // import (owner decision, 2026-11-28). They may be approved as reviewed drafts, but only with the exact
+    // text that was imported and reviewed; any change makes it the reviewer's own text (human_written).
+    const curatedBank = row.provider === MANUAL_PROVIDER && (row.incident_key ?? '').startsWith('bank:');
+    if (curatedBank) {
+      const changed =
+        (req.playTitle !== undefined && cleanText(req.playTitle, 240) !== row.play_title) ||
+        (req.explanation !== undefined && cleanText(req.explanation, 800) !== row.explanation);
+      if (changed) out.push('MACHINE_DRAFT_CHANGED: the text differs from the reviewed bank draft; approve it unchanged, or attest human_written for your own text');
+    } else if (row.provider !== OFFICIAL_PROVIDER || !draft) {
+      out.push('MACHINE_DRAFT_MISSING: only official-report candidates with a facts-first draft, or reviewed curated question-bank drafts, can use textOrigin machine_draft_reviewed');
+    } else if (!Array.isArray(draft.problems) || draft.problems.length > 0) {
+      out.push('MACHINE_DRAFT_INVALID: the stored draft failed validation; write the text yourself (textOrigin human_written)');
+    }
   }
   if (!f.incidentVerified) out.push('FACTUAL_INCIDENT_UNVERIFIED: verify the incident itself, not just the headline');
   if (!f.claimsVerified) out.push('FACTUAL_CLAIMS_UNVERIFIED: every claim in the explanation must be supported by the evidence');
