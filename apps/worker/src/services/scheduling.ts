@@ -112,7 +112,7 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
   const to = addDays(end, Math.max(cooldown - 1, 0));
   const [pool, existing, history, usage, epochMeta] = await Promise.all([
     eligiblePool(db, opts.allowFixtures, opts.appEnv),
-    db.prepare('SELECT day FROM daily_rounds WHERE day BETWEEN ? AND ?').bind(opts.startDate, end).all<{ day: string }>(),
+    db.prepare('SELECT day, status FROM daily_rounds WHERE day BETWEEN ? AND ?').bind(opts.startDate, end).all<{ day: string; status: string }>(),
     db
       .prepare(
         `SELECT i.day AS date, i.question_id AS questionId, COALESCE(q.event_id, q.incident_id) AS eventId
@@ -126,6 +126,8 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
   ]);
   const epoch = epochMeta ?? opts.startDate;
   const keptDays = new Set(existing.results.map((r) => r.day));
+  // Withdrawn days are kept (never re-planned) but are not playable, so they do not count as covered.
+  const withdrawnDays = new Set(existing.results.filter((r) => r.status === 'withdrawn').map((r) => r.day));
   const usageCounts = new Map(usage.results.map((r) => [r.question_id, r.n]));
   const includeSpoilers = opts.includeSpoilers !== false;
   const bank = includeSpoilers ? pool : pool.filter((q) => !q.spoiler);
@@ -210,11 +212,11 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
   }
 
   // ---- inventory + warnings ----
-  const planned = plan.ok ? plan.days : plan.partial;
   const used = new Set([...usageCounts.keys(), ...(opts.dryRun || !out.added.length ? [] : toWrite.flatMap((d) => d.questions.map((q) => q.id)))]);
   out.inventory.unusedFlorida = bank.filter((q) => q.answer === 'FLORIDA' && !used.has(q.id)).length;
   out.inventory.unusedGta = bank.filter((q) => q.answer === 'GTA' && !used.has(q.id)).length;
-  const covered = new Set([...kept, ...(opts.dryRun ? planned.map((d) => d.date) : out.added.map((d) => d.date))]);
+  // A dry run reports what a real run with the same options would write (toWrite), nothing more.
+  const covered = new Set([...kept.filter((d) => !withdrawnDays.has(d)), ...out.added.map((d) => d.date)]);
   let runway = 0;
   while (runway < opts.days && covered.has(addDays(opts.startDate, runway))) runway++;
   out.inventory.runwayDays = runway;
@@ -229,7 +231,7 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
     .prepare(`SELECT COUNT(*) AS n FROM daily_rounds WHERE day >= ? AND status <> 'withdrawn'`)
     .bind(opts.startDate)
     .first<{ n: number }>();
-  out.inventory.scheduledAhead = (aheadRow?.n ?? 0) + (opts.dryRun ? planned.length : 0);
+  out.inventory.scheduledAhead = (aheadRow?.n ?? 0) + (opts.dryRun ? toWrite.length : 0);
 
   if (!plan.ok) out.warnings.push({ code: 'shortage', date: plan.failure.date, message: out.error!.message });
   if (out.gaps.length) {
@@ -255,20 +257,21 @@ async function scheduleOnce(db: D1Database, opts: ScheduleOptions & { cooldownDa
       });
     }
   }
-  const resampled = planned.filter((d) => d.resampled).length;
+  const resampled = (plan.ok ? plan.days : plan.partial).filter((d) => d.resampled).length;
   if (resampled) out.warnings.push({ code: 'split_resampled', message: `${resampled} day(s) had their Florida/GTA draw resampled because the inventory could not fill the first draw.` });
   return out;
 }
 
 /** Horizon and cooldown from Worker vars (SCHEDULE_AHEAD_DAYS, EVENT_COOLDOWN_DAYS), else the config defaults. */
 export function scheduleVars(env: { SCHEDULE_AHEAD_DAYS?: string; EVENT_COOLDOWN_DAYS?: string }) {
-  return { aheadDays: intVar(env.SCHEDULE_AHEAD_DAYS, SCHEDULE_AHEAD_DAYS, MAX_SCHEDULE_DAYS), cooldownDays: intVar(env.EVENT_COOLDOWN_DAYS, EVENT_COOLDOWN_DAYS, 365) };
+  // The horizon is at least 1 day: 0 would make every cron run fail before publishing due days.
+  return { aheadDays: intVar(env.SCHEDULE_AHEAD_DAYS, SCHEDULE_AHEAD_DAYS, MAX_SCHEDULE_DAYS, 1), cooldownDays: intVar(env.EVENT_COOLDOWN_DAYS, EVENT_COOLDOWN_DAYS, 365) };
 }
 
-/** Non-negative integer from a Worker var, else the default. */
-export function intVar(value: string | undefined, fallback: number, max: number): number {
+/** Integer in [min, max] from a Worker var, else the default. */
+export function intVar(value: string | undefined, fallback: number, max: number, min = 0): number {
   const n = Number(value);
-  return value !== undefined && value.trim() !== '' && Number.isInteger(n) && n >= 0 && n <= max ? n : fallback;
+  return value !== undefined && value.trim() !== '' && Number.isInteger(n) && n >= min && n <= max ? n : fallback;
 }
 
 /** Cron + admin entry point: keep `aheadDays` scheduled from today (writing what can be planned), then mark due days published. */
@@ -279,7 +282,7 @@ export async function ensureSchedule(
   const today = utcDate(opts.now);
   const result = await scheduleRounds(db, {
     startDate: today,
-    days: Math.min(opts.aheadDays ?? SCHEDULE_AHEAD_DAYS, MAX_SCHEDULE_DAYS),
+    days: Math.max(1, Math.min(opts.aheadDays ?? SCHEDULE_AHEAD_DAYS, MAX_SCHEDULE_DAYS)),
     cooldownDays: opts.cooldownDays,
     allowPartial: true,
     allowFixtures: opts.allowFixtures,

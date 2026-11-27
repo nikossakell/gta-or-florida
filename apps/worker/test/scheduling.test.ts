@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { addDays, createRng, daysBetween } from '@gof/core';
-import { eligiblePool, ensureSchedule, scheduleRounds } from '../src/services/scheduling.ts';
+import { eligiblePool, ensureSchedule, scheduleRounds, scheduleVars } from '../src/services/scheduling.ts';
 import { ADMIN_TOKEN, APPROVED_PUBLISHER, createHarness, migrationStatements, postJson, seedApproved, seedMany, seedSource, type Harness } from './harness.ts';
 import type { SourcePolicy } from '@gof/core';
 
@@ -206,6 +206,35 @@ describe('scheduleRounds (verified bank, pseudo-random days)', () => {
     expect(days.size).toBe(90);
     expect(new Set(floridaPerDay(days)).size).toBeGreaterThanOrEqual(4); // the split varies
     await expect(scheduleRounds(h.db, { startDate: START, days: 91 })).rejects.toThrow(/days must be 1-90/);
+  });
+
+  it('withdrawn days are not counted as covered: they show up as gaps and end the runway', async () => {
+    await seedMany(h.db, 30, 30);
+    await scheduleRounds(h.db, { startDate: START, days: 4, rng: createRng('w1') });
+    await h.db.prepare(`UPDATE daily_rounds SET status = 'withdrawn' WHERE day = ?`).bind(addDays(START, 1)).run();
+    const r = await scheduleRounds(h.db, { startDate: START, days: 4, rng: createRng('w2') });
+    expect(r.added).toHaveLength(0);
+    expect(r.inventory.runwayDays).toBe(1);
+    expect(r.gaps).toEqual([addDays(START, 1)]);
+    expect(r.warnings.map((w) => w.code)).toContain('schedule_gap');
+  });
+
+  it('a failing dry run without allowPartial reports what a real run would write: nothing', async () => {
+    await seedMany(h.db, 3, 3);
+    const r = await scheduleRounds(h.db, { startDate: START, days: 5, dryRun: true, rng: createRng('dryfail') });
+    expect(r.ok).toBe(false);
+    expect(r.added).toHaveLength(0);
+    expect(r.inventory.runwayDays).toBe(0);
+    expect(r.inventory.scheduledAhead).toBe(0);
+  });
+
+  it('a zero horizon never breaks the cron: SCHEDULE_AHEAD_DAYS=0 falls back to the default and ensureSchedule clamps to 1 day', async () => {
+    expect(scheduleVars({ SCHEDULE_AHEAD_DAYS: '0' }).aheadDays).toBe(30);
+    expect(scheduleVars({ SCHEDULE_AHEAD_DAYS: '7' }).aheadDays).toBe(7);
+    await seedMany(h.db, 10, 10);
+    const r = await ensureSchedule(h.db, { now: new Date(`${START}T06:00:00Z`), aheadDays: 0, rng: createRng('zero') });
+    expect(r.todayPlayable).toBe(true);
+    expect(r.added).toHaveLength(1);
   });
 
   it('a dry run plans and reports but writes nothing', async () => {

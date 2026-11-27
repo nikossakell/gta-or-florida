@@ -5,7 +5,7 @@
  * All content is fictional test data on IANA-reserved example hosts.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { ChallengeResponse, ScheduleResponse } from '@gof/core';
+import { createRng, type ChallengeResponse, type ScheduleResponse } from '@gof/core';
 import { toImportItem, type BankEntry } from '../../ingest/src/bank-item.ts';
 import { scheduleRounds } from '../src/services/scheduling.ts';
 import { ADMIN_TOKEN, SERVICE_TOKEN, createHarness, postJson, seedMany, type Harness } from './harness.ts';
@@ -91,6 +91,42 @@ describe('curated bank import', () => {
     expect((await edit({ eventId: 'Not Valid!' })).status).toBe(400);
     const log = await h.db.prepare(`SELECT decision, details FROM review_log WHERE entity_id = ? AND decision = 'edited'`).bind(id).first<{ details: string }>();
     expect(JSON.parse(log!.details)).toEqual({ eventId: 'shared-event-1', spoiler: true });
+  });
+});
+
+describe('one event, one answer', () => {
+  const importItems = async (items: unknown[], key: string) =>
+    (await (await call('/api/v1/admin/import', postJson({ items }, SERVICE_TOKEN, { 'idempotency-key': key }))).json()) as { results: { outcome: string; errors?: string[] }[] };
+
+  it('refuses a mixed-side event id within a batch and against earlier batches', async () => {
+    const fl = entries[0]!;
+    const gta = { ...entries[2]!, eventId: fl.eventId };
+    const mixed = await importItems([toImportItem(fl, { batch: 'b1' }, now), toImportItem(gta, { batch: 'b1' }, now)], 'event-side-mixed-1');
+    expect(mixed.results.map((r) => r.outcome)).toEqual(['inserted', 'invalid']);
+    expect(mixed.results[1]!.errors!.join(' ')).toMatch(/EVENT_SIDE_CONFLICT/);
+    const later = await importItems([toImportItem({ ...gta, headline: 'A heist crew borrows a blimp to rehearse a rooftop getaway' }, { batch: 'b2' }, now)], 'event-side-mixed-2');
+    expect(later.results[0]!.outcome).toBe('invalid');
+    expect(later.results[0]!.errors!.join(' ')).toMatch(/EVENT_SIDE_CONFLICT/);
+  });
+
+  it('refuses to move a question into an event of the other answer', async () => {
+    await importItems([toImportItem(entries[0]!, { batch: 'b1' }, now)], 'event-side-edit-1');
+    await seedMany(h.db, 0, 1);
+    const gid = (await h.db.prepare(`SELECT id FROM questions WHERE answer_kind = 'GTA'`).first<{ id: string }>())!.id;
+    const r = await call('/api/v1/admin/review', postJson({ questionId: gid, action: 'edit', eventId: entries[0]!.eventId }, ADMIN_TOKEN));
+    expect(r.status).toBe(422);
+    expect(JSON.stringify(await r.json())).toMatch(/EVENT_SIDE_CONFLICT/);
+  });
+
+  it('refuses to regroup an approved question that sits on a future scheduled day', async () => {
+    await seedMany(h.db, 6, 6);
+    await scheduleRounds(h.db, { startDate: '2026-11-26', days: 1, rng: createRng('regroup') });
+    const qid = (await h.db.prepare('SELECT question_id FROM daily_round_items LIMIT 1').first<{ question_id: string }>())!.question_id;
+    const r = await call('/api/v1/admin/review', postJson({ questionId: qid, action: 'edit', eventId: 'new-event-x' }, ADMIN_TOKEN));
+    expect(r.status).toBe(422);
+    expect(JSON.stringify(await r.json())).toMatch(/scheduled on 2026-11-26/);
+    // Spoiler metadata alone is still editable.
+    expect((await call('/api/v1/admin/review', postJson({ questionId: qid, action: 'edit', spoiler: true }, ADMIN_TOKEN))).status).toBe(200);
   });
 });
 

@@ -24,7 +24,7 @@ import {
 import { DEFAULT_THRESHOLDS, POLICY_VERSION, sourceById } from '@gof/config';
 import type { Principal } from '../security/auth.ts';
 import { HttpError } from '../http.ts';
-import { isConstraintError, logStmt, placeholders } from '../db/repo.ts';
+import { eventSideConflict, isConstraintError, logStmt, placeholders } from '../db/repo.ts';
 import { sourceAccessProblems } from './eligibility.ts';
 
 export type CandidateRow = {
@@ -226,6 +226,16 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
     if (row.quality_state !== 'candidate' && !(row.quality_state === 'approved' && metaOnly)) {
       return { ok: false, errors: ['Only candidates can be edited (approved questions: only --event-id / --spoiler)'] };
     }
+    if (req.eventId && req.eventId !== row.event_id) {
+      const conflict = await eventSideConflict(db, req.eventId, row.answer_kind, row.question_id);
+      if (conflict) return { ok: false, errors: [`EVENT_SIDE_CONFLICT: event ${req.eventId} is already used by ${conflict}, which has the other answer`] };
+      // Days already planned were checked against the old grouping; changing it could break the event cooldown there.
+      const planned = await db
+        .prepare(`SELECT i.day FROM daily_round_items i JOIN daily_rounds r ON r.day = i.day WHERE i.question_id = ? AND r.day > ? AND r.status = 'scheduled' LIMIT 1`)
+        .bind(row.question_id, utcDate(now))
+        .first<{ day: string }>();
+      if (planned) return { ok: false, errors: [`Question is scheduled on ${planned.day}; withdraw it from that day before changing its event (the cooldown was planned with the current event).`] };
+    }
     await db.batch([
       db
         .prepare('UPDATE questions SET play_title = ?, explanation = ?, difficulty = ?, event_id = COALESCE(?, event_id), spoiler = COALESCE(?, spoiler), updated_at = ? WHERE id = ?')
@@ -249,6 +259,11 @@ export async function review(db: D1Database, req: ReviewRequest, who: Principal,
   if (row.is_fixture) err('Fixture content cannot be approved as a real question');
   if (row.kind === 'GTA_PLAYER_EVENT') err('GTA_PLAYER_EVENT is disabled');
   if (row.possible_duplicate_of && !req.notDuplicate) err(`Flagged as possible duplicate of ${row.possible_duplicate_of}; merge it or pass notDuplicate after checking`);
+  {
+    const ev = req.eventId ?? row.event_id;
+    const conflict = ev ? await eventSideConflict(db, ev, row.answer_kind, row.question_id) : null;
+    if (conflict) err(`EVENT_SIDE_CONFLICT: event ${ev} is already used by ${conflict}, which has the other answer`);
+  }
 
   const mode = req.mode ?? 'licensed';
   if (mode === 'factual_summary') {
@@ -536,7 +551,8 @@ export async function collectStats(db: D1Database, now: Date) {
   if (!todayRow || todayRow.status === 'withdrawn') warnings.push(`No playable round for today (${today}).`);
   if (ahead < 14) warnings.push(`Only ${ahead} round(s) scheduled from today (target 30).`);
   // Holes in the next 30 days: a missing day before a scheduled one.
-  const upcoming = await db.prepare(`SELECT day FROM daily_rounds WHERE day BETWEEN ? AND ?`).bind(today, addDays(today, 29)).all<{ day: string }>();
+  // Withdrawn days are not playable: they count as holes.
+  const upcoming = await db.prepare(`SELECT day FROM daily_rounds WHERE day BETWEEN ? AND ? AND status <> 'withdrawn'`).bind(today, addDays(today, 29)).all<{ day: string }>();
   const have = new Set(upcoming.results.map((r) => r.day));
   const last = upcoming.results.map((r) => r.day).sort().at(-1);
   const holes: string[] = [];

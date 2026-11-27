@@ -30,7 +30,7 @@ import {
 } from '@gof/core';
 import { DEFAULT_THRESHOLDS, POLICY_VERSION, REGISTRY, sourceById, sourceForUrl, type SourceRegistry } from '@gof/config';
 import { isLocal, type Env } from '../env.ts';
-import { getMeta, isConstraintError, logStmt, newId, placeholders, setMetaStmt } from '../db/repo.ts';
+import { eventSideConflict, getMeta, isConstraintError, logStmt, newId, placeholders, setMetaStmt } from '../db/repo.ts';
 import { unsafeReferenceUrl } from '../security/url.ts';
 import { sourceUpsertStmt } from './sources.ts';
 
@@ -134,6 +134,7 @@ export async function importBatch(batch: ImportBatch, ctx: Ctx): Promise<ImportI
 
   const plans: { item: ImportItem; result: ImportItemResult; stmts: D1PreparedStatement[] }[] = [];
   const touchedSources = new Map<string, SourcePolicy>();
+  const batchEventSide = new Map<string, 'FLORIDA' | 'GTA'>();
 
   for (const item of items) {
     const result: ImportItemResult = { incidentKey: item.incidentKey, outcome: 'invalid' };
@@ -149,6 +150,17 @@ export async function importBatch(batch: ImportBatch, ctx: Ctx): Promise<ImportI
     if (problems.length) {
       result.errors = problems;
       continue;
+    }
+    // One event, one answer: the scheduler fills Florida/GTA slots per event.
+    if (item.question.eventId) {
+      const side = item.kind === 'FLORIDA_NEWS' ? 'FLORIDA' : 'GTA';
+      const other = batchEventSide.get(item.question.eventId);
+      const conflict = other && other !== side ? 'another item in this batch' : await eventSideConflict(db, item.question.eventId, side);
+      if (conflict) {
+        result.errors = [`EVENT_SIDE_CONFLICT: event ${item.question.eventId} is already used by a question with the other answer (${conflict})`];
+        continue;
+      }
+      batchEventSide.set(item.question.eventId, side);
     }
     const ref = item.reference;
     const pkey = ref.providerKey ? `${ref.provider}|${ref.providerKey}` : null;

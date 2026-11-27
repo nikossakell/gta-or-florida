@@ -107,7 +107,7 @@ export const importItemSchema = s.object({
     difficulty: s.int({ min: 1, max: 3 }),
     /** Questions about the same underlying event share it (default: the incident). */
     eventId: s.optional(eventIdSchema),
-    /** Left out of scheduling unless explicitly included. */
+    /** Minor-spoiler metadata: scheduled like any other approved question (major spoilers are rejected at review). */
     spoiler: s.optional(s.boolean()),
   }),
   ai: s.nullable(aiTraceSchema),
