@@ -51,17 +51,17 @@ function cloudflarePagesHeaders(apiBase: string | undefined): Plugin {
   };
 }
 
-/** Same rule as src/daily-drive/flag.ts: VITE_DAILY_DRIVE wins; unset = on for `vite dev` only. */
-function dailyDriveOn(flag: string | undefined, command: 'serve' | 'build', mode: string): boolean {
-  return flag === '1' || (flag !== '0' && command === 'serve' && mode !== 'test');
+/** Same rule as src/daily-drive/flag.ts: VITE_DAILY_DRIVE wins; unset = on, except in tests and the legacy static (`pages`) build. */
+export function dailyDriveOn(flag: string | undefined, mode: string): boolean {
+  return flag === '1' || (flag !== '0' && mode !== 'test' && mode !== 'pages');
 }
 
-export default defineConfig(({ mode, command }) => {
+export default defineConfig(({ mode }) => {
   // `--mode pages`: fully static build for GitHub Pages (reads pre-generated JSON, no /api).
   const pages = mode === 'pages';
   const env = loadEnv(mode, '../..', 'VITE_');
   const apiBase = process.env.VITE_API_BASE_URL ?? env.VITE_API_BASE_URL;
-  const dailyDrive = dailyDriveOn(process.env.VITE_DAILY_DRIVE ?? env.VITE_DAILY_DRIVE, command, mode);
+  const dailyDrive = dailyDriveOn(process.env.VITE_DAILY_DRIVE ?? env.VITE_DAILY_DRIVE, mode);
   return {
     base: basePath(process.env.BASE_PATH),
     plugins: [react(), tailwindcss(), ...(pages ? [] : [cloudflarePagesHeaders(apiBase)])],

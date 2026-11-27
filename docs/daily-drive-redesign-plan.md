@@ -117,8 +117,8 @@ The new shortcuts are additive: **N**, plus ignoring keys in inputs or contented
   - Tests mock it with `vi.mock`.
 - **Flag:** `VITE_DAILY_DRIVE`, resolved once in `src/daily-drive/flag.ts`:
   - `'1'` / `'0'` set explicitly always wins.
-  - When unset, it is **on** in `vite dev` and **off** in production builds and in Vitest (`MODE === 'test'`). That way the existing tests keep exercising the legacy UI unchanged, and the new tests opt in.
-  - For staging, set `VITE_DAILY_DRIVE=1` in the Cloudflare Pages **Preview** environment variables and leave Production unset. That is a dashboard change for you to make; I won't make it.
+  - When unset, it is **on** in `vite dev` and in the Cloudflare Pages build (approved for release on 2026-11-28). It stays **off** in Vitest (`MODE === 'test'`), so the existing tests keep exercising the legacy UI unchanged and the new tests opt in, and in the legacy static demo build (`--mode pages`).
+  - Rollback: set `VITE_DAILY_DRIVE=0` in the Cloudflare Pages environment and rebuild.
   - Because the flag is a build-time constant, the Daily Drive code, CSS and fonts drop out of the bundle when it is off. I will measure that.
 
 ## 7. Testing plan
