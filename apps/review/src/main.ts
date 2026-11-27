@@ -37,7 +37,7 @@ async function main() {
   console.log(`Audit suggestions:  ${existsSync(p.audit) ? p.audit : '(none found)'}`);
   const service = await ReviewService.open({ masterPath: p.master, auditPath: existsSync(p.audit) ? p.audit : undefined, persistDir: p.state, reviewer });
   const s = await service.summary();
-  if (s.master.changedSinceImport) console.warn(`WARNING: the master file changed since it was imported for review (sha256 ${s.master.sha256AtImport.slice(0, 12)}… → ${s.master.sha256Now.slice(0, 12)}…). The dashboard keeps reviewing the imported version.`);
+  if (s.master.changedSinceImport) console.warn(`WARNING: ${s.master.changedEntries.length} question(s) changed in the master after they were imported for review (${s.master.changedEntries.slice(0, 5).join(', ')}${s.master.changedEntries.length > 5 ? ', …' : ''}). The dashboard keeps reviewing the imported version of those.`);
   const srv = await startServer(service, { port: p.port, log: (m) => console.error(m) });
   console.log(`\nEditorial review dashboard for ${s.total} questions (${s.approved} approved, ${s.unreviewed} unreviewed). Reviewer: ${service.reviewer}`);
   console.log(`Open ${srv.url}  (local only; Ctrl+C to stop)`);
