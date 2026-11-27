@@ -151,6 +151,8 @@ export class ReviewService {
     private readonly masterSha: string,
     private readonly importedSha: string,
     private readonly importedFile: string,
+    /** Questions already under review whose master entry now differs from the version imported for review. */
+    private readonly changedEntries: string[],
   ) {}
 
   static async open(opts: ServiceOptions): Promise<ReviewService> {
@@ -168,7 +170,14 @@ export class ReviewService {
       await importMaster(w, rawText, masterSha, opts.masterPath, cfg, reviewer, now(), new Set(have.map((r) => r.event_id)), Math.max(0, ...have.map((r) => r.position)));
       const meta = await w.db.prepare(`SELECT key, value FROM editorial_meta`).all<{ key: string; value: string }>();
       const m = Object.fromEntries(meta.results.map((r) => [r.key, r.value]));
-      return new ReviewService(w, opts, cfg, loadAudit(opts.auditPath), reviewer, masterSha, m.master_sha256 ?? '', m.master_file ?? '');
+      // Compare entry by entry (not the file checksum, which moves whenever questions are added or removed):
+      // a changed entry is NOT re-imported, so the reviewer must be told it differs.
+      const stored = new Map(
+        (await w.db.prepare('SELECT event_id, original_json FROM editorial_items').all<{ event_id: string; original_json: string }>()).results.map((r) => [r.event_id, r.original_json]),
+      );
+      const parsedMaster = parseBankFile(JSON.parse(rawText));
+      const changed = parsedMaster.ok ? parsedMaster.file.questions.filter((e) => stored.has(e.eventId) && stored.get(e.eventId) !== JSON.stringify(e)).map((e) => e.eventId) : [];
+      return new ReviewService(w, opts, cfg, loadAudit(opts.auditPath), reviewer, masterSha, m.master_sha256 ?? '', m.master_file ?? '', changed);
     } catch (error) {
       await w.dispose();
       throw error;
@@ -230,7 +239,7 @@ export class ReviewService {
       florida: origin('FLORIDA'),
       gta: origin('GTA'),
       reviewer: this.reviewer,
-      master: { file: this.importedFile, sha256AtImport: this.importedSha, sha256Now: this.masterSha, changedSinceImport: this.importedSha !== this.masterSha },
+      master: { file: this.importedFile, sha256AtImport: this.importedSha, sha256Now: this.masterSha, changedSinceImport: this.changedEntries.length > 0, changedEntries: this.changedEntries },
       auditLoaded: !!this.audit,
     };
   }

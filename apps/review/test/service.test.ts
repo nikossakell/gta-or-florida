@@ -183,12 +183,15 @@ describe('persistence and failure handling', () => {
       category: 'weird' as const,
       difficulty: 1,
     };
-    // The rejected question leaves the master; a new one arrives.
-    writeBank(d4, { ...BANK, questions: [...BANK.questions.filter((q) => q.eventId !== 'test-gta-crane-car'), extra] });
+    // The rejected question leaves the master, a new one arrives, and an existing entry is edited.
+    const edited = BANK.questions.filter((q) => q.eventId !== 'test-gta-crane-car').map((q) => (q.eventId === 'test-fl-wheelbarrow-parade' ? { ...q, headline: 'A man pushed a wheelbarrow of garden gnomes along a parade route at noon' } : q));
+    writeBank(d4, { ...BANK, questions: [...edited, extra] });
     const b = await ReviewService.open({ masterPath: master, persistDir: state, reviewer: 'R2', now: () => NOW });
     const s = await b.summary();
     expect(s).toMatchObject({ total: 5, approved: 1, rejected: 1, unreviewed: 3 });
-    expect(s.master.changedSinceImport).toBe(false);
+    // Adding questions does not hide that an existing one changed (it is not re-imported).
+    expect(s.master).toMatchObject({ changedSinceImport: true, changedEntries: ['test-fl-wheelbarrow-parade'] });
+    expect((await b.detail('test-fl-wheelbarrow-parade')).working.headline).toBe(BANK.questions[1]!.headline);
     const list = await b.list();
     expect(list.at(-1)).toMatchObject({ eventId: 'test-fl-kayak-drive-thru', status: 'unreviewed', position: 5 });
     expect((await b.detail('test-gta-crane-car')).status).toBe('rejected');

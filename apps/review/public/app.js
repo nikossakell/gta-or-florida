@@ -93,7 +93,7 @@ async function loadSummary() {
   const banners = $('banners');
   banners.replaceChildren();
   if (s.master.changedSinceImport)
-    banners.append(h('p', { class: 'banner warn' }, `The master file changed after it was imported for review. The dashboard keeps reviewing the imported version (sha256 ${s.master.sha256AtImport.slice(0, 12)}…).`));
+    banners.append(h('p', { class: 'banner warn' }, `${s.master.changedEntries.length} question(s) changed in the master after they were imported for review (${s.master.changedEntries.slice(0, 5).join(', ')}${s.master.changedEntries.length > 5 ? ', …' : ''}). The dashboard keeps reviewing the imported version of those.`));
   if (!s.auditLoaded) banners.append(h('p', { class: 'banner' }, 'No editorial audit file was found, so there are no suggestions. Decisions work as normal.'));
 }
 
