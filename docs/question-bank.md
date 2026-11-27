@@ -66,6 +66,14 @@ The flow is Discover → Verify → Draft → Review → Approve → Store → S
    - After approval, change only that metadata with `questions:edit --id <q> --event-id … | --spoiler | --no-spoiler`.
    - An event belongs to one answer: import, approval and `--event-id` refuse to group a Florida question with a GTA one (`EVENT_SIDE_CONFLICT`). A question already on a future scheduled day cannot change its event (the cooldown was planned with the old one); withdraw it from that day first.
    - To drop a question: `questions:reject` for candidates, `withdraw --question` for anything already scheduled.
+   **Batches reviewed in the editorial review dashboard** (`npm run review`): the owner decided on 2026-11-28 that these AI-assisted drafts, whose facts were verified against their sources during research and whose wording the owner approved unchanged in the dashboard, are approved as *reviewed drafts*. Use the dashboard's **Approved** export for both steps:
+
+   ```bash
+   npm run bank:import  -- --file approved-export.json --env staging
+   npm run bank:approve -- --file approved-export.json --env staging   # --dry-run first; production also needs --allow-production
+   ```
+
+   `bank:approve` only accepts questions that carry the dashboard's approval record, checks that the Worker's stored text is exactly the reviewed text, runs a fresh link check (2 s between requests to the same host), and approves through the normal `/review` route with `textOrigin: machine_draft_reviewed` and `humanWritten: false`. The audit row says what happened: an AI-assisted draft, facts verified during research, wording approved unchanged by the named reviewer. The Worker accepts a reviewed draft only for curated bank candidates and only with the unchanged text (`MACHINE_DRAFT_CHANGED` otherwise); edited text must be attested as your own (`--attest-human-written`). Re-running is safe.
 5. **Generate the schedule** (next section).
 
 Aim for an inventory of about 300 approved questions (150 Florida, 150 GTA). Never fill the bank with invented or placeholder content.

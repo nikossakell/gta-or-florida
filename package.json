@@ -35,6 +35,7 @@
     "ingest:url": "tsx --env-file-if-exists=.env apps/ingest/src/ingest-url.ts",
     "ingest:official": "tsx --env-file-if-exists=.env apps/ingest/src/ingest-official.ts",
     "bank:import": "tsx --env-file-if-exists=.env apps/ingest/src/bank-import.ts",
+    "bank:approve": "tsx --env-file-if-exists=.env apps/ingest/src/bank-approve.ts",
     "admin": "tsx --env-file-if-exists=.env apps/ingest/src/admin.ts",
     "legacy:export": "tsx apps/ingest/src/legacy.ts export",
     "legacy:import": "tsx --env-file-if-exists=.env apps/ingest/src/legacy.ts import",
