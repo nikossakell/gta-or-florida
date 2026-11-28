@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
-  "description": "GTA or Florida? \u2014 a daily trivia game: real Florida news or a documented GTA in-game event? (Cloudflare Pages + Workers + D1)",
+  "description": "GTA or Florida? — a daily trivia game: real Florida news or a documented GTA in-game event? (Cloudflare Pages + Workers + D1)",
   "engines": {
     "node": ">=22.12"
   },
@@ -30,7 +30,10 @@
     "validate": "tsx scripts/validate-questions.ts && tsx scripts/check-config.ts",
     "schedule:build": "tsx scripts/build-daily-schedule.ts",
     "schedule:simulate": "tsx scripts/simulate-schedule.ts",
-    "ci": "npm run typecheck && npm run test && npm run validate",
+    "ci": "npm run ci:worker && npm run build:web && ALLOW_PLACEHOLDER_CONTENT=true npm run build:pages",
+    "ci:worker": "npm run check:secrets && npm run typecheck && npm test && npm run validate && npm run build -w @gof/worker && npm run db:migrate:check -w @gof/worker",
+    "ci:web": "npm run check:secrets && npm run typecheck && vitest run --project core --project config --project web --project scripts && npm run validate && npm run build:web",
+    "check:secrets": "tsx scripts/check-secrets.ts",
     "ingest:batch": "tsx --env-file-if-exists=.env apps/ingest/src/run.ts",
     "ingest:url": "tsx --env-file-if-exists=.env apps/ingest/src/ingest-url.ts",
     "ingest:official": "tsx --env-file-if-exists=.env apps/ingest/src/ingest-official.ts",
@@ -40,6 +43,7 @@
     "legacy:export": "tsx apps/ingest/src/legacy.ts export",
     "legacy:import": "tsx --env-file-if-exists=.env apps/ingest/src/legacy.ts import",
     "smoke": "tsx scripts/smoke.ts",
+    "smoke:ci": "if [ -n \"$SMOKE_URL\" ]; then npm run smoke -- \"$SMOKE_URL\"; else echo \"SMOKE_URL not set: post-deploy smoke check skipped\"; fi",
     "deploy:worker:staging": "npm run deploy:staging -w @gof/worker",
     "deploy:worker:production": "npm run deploy:production -w @gof/worker",
     "check:ingest:staging": "npm run check:staging -w @gof/ingest-worker",
@@ -51,7 +55,6 @@
     "concurrently": "^10.0.7",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.1",
-    "yaml": "^2.9.1"
+    "vitest": "^5.1.1"
   }
 }

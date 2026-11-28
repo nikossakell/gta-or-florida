@@ -9,7 +9,9 @@
     "deploy:staging": "wrangler deploy --env staging",
     "deploy:production": "wrangler deploy --env production",
     "check:staging": "wrangler deploy --dry-run --env staging --outdir dist",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p test"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
+    "deploy:ci:staging": "wrangler deploy --env staging",
+    "deploy:ci:production": "wrangler deploy --env production"
   },
   "dependencies": {
     "@gof/config": "*",

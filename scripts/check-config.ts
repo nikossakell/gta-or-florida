@@ -2,13 +2,13 @@
  * Configuration self-checks run by `npm run validate` (and CI):
  *  - the source policy registry parses and its invariants hold
  *  - wrangler.jsonc envs are isolated (distinct DB names/ids, no shared ids)
- *  - workflow YAML parses and scheduled jobs use non-overlapping concurrency groups
+ *  - CI/CD is Cloudflare-native: no GitHub Actions workflow files, and the npm entry points the Cloudflare
+ *    builds call (docs/cloudflare-ci-cd.md) exist
  *  - .env.example documents every variable the code reads from process.env / Worker env
  * Prints warnings (not failures) for placeholders that the owner must still fill in.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import { REGISTRY } from '@gof/config';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -70,25 +70,22 @@ const discovery = JSON.parse(readFileSync(resolve(ROOT, 'data/sources.json'), 'u
 const maxCheckpoints = (discovery.grandTheftWiki?.categories?.length ?? 0) * 2 + 1 /* wiki rotation */ + 3 /* gdelt cursor + cooldown guard */ + (discovery.rss?.length ?? 0) /* one cache key per feed */ + 1 /* dataset day cursor */ + 1 /* DOJ backfill cursor */;
 if (maxCheckpoints > 20) problems.push(`up to ${maxCheckpoints} checkpoints per run; one import batch carries at most 20 (fewer feeds/categories, or raise the contract limit)`);
 
-// 3. workflows
+// 3. CI/CD: Cloudflare Workers Builds + Pages run the checks and deploy; GitHub Actions is retired.
 const wfDir = resolve(ROOT, '.github/workflows');
-const groups = new Map<string, string>();
-for (const file of readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f))) {
-  let wf: { on?: unknown; concurrency?: { group?: string } | string; jobs?: Record<string, unknown> };
-  try {
-    wf = parseYaml(readFileSync(resolve(wfDir, file), 'utf8'));
-  } catch (error) {
-    problems.push(`${file}: invalid YAML (${(error as Error).message})`);
-    continue;
-  }
-  if (!wf.jobs) problems.push(`${file}: no jobs`);
-  const group = typeof wf.concurrency === 'string' ? wf.concurrency : wf.concurrency?.group;
-  const scheduled = typeof wf.on === 'object' && wf.on !== null && 'schedule' in wf.on;
-  if (scheduled && !group) problems.push(`${file}: scheduled workflow without a concurrency group (runs could overlap)`);
-  if (group && !group.includes('${{')) {
-    if (groups.has(group)) problems.push(`${file}: concurrency group "${group}" also used by ${groups.get(group)}`);
-    groups.set(group, file);
-  }
+const leftover = existsSync(wfDir) ? readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f)) : [];
+for (const f of leftover) problems.push(`.github/workflows/${f}: GitHub Actions is retired (CI/CD runs in Cloudflare, see docs/cloudflare-ci-cd.md); remove it`);
+const scriptsOf = (pkg: string) => (JSON.parse(readFileSync(resolve(ROOT, pkg), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {};
+const entryPoints: [string, string[]][] = [
+  ['package.json', ['check:secrets', 'ci:worker', 'ci:web', 'smoke:ci', 'build:web']],
+  ['apps/worker/package.json', ['deploy:ci:staging', 'deploy:ci:production', 'db:migrate:check', 'db:backup:staging', 'db:backup:production']],
+  ['apps/ingest-worker/package.json', ['deploy:ci:staging', 'deploy:ci:production']],
+];
+for (const [pkg, names] of entryPoints) for (const n of names) if (!scriptsOf(pkg)[n]) problems.push(`${pkg}: missing script "${n}" (called by the Cloudflare build configuration)`);
+const ciWorker = scriptsOf('package.json')['ci:worker'] ?? '';
+const ciWeb = scriptsOf('package.json')['ci:web'] ?? '';
+for (const step of ['check:secrets', 'typecheck', 'validate']) {
+  if (!ciWorker.includes(step)) problems.push(`ci:worker must run ${step} before the Worker deploy`);
+  if (!ciWeb.includes(step)) problems.push(`ci:web must run ${step} before the Pages deploy`);
 }
 
 // 4. env documentation
@@ -116,4 +113,4 @@ if (problems.length) {
   for (const p of problems) console.error(`error: ${p}`);
   process.exit(1);
 }
-console.log(`config ok: ${REGISTRY.sources.length} sources (${approved.length} approved, policy ${REGISTRY.policyVersion}), ${dbs.length} wrangler envs, ${wfNames.length} ingestion workflows, ${cronCount} cron triggers, ${groups.size} GitHub workflow concurrency groups`);
+console.log(`config ok: ${REGISTRY.sources.length} sources (${approved.length} approved, policy ${REGISTRY.policyVersion}), ${dbs.length} wrangler envs, ${wfNames.length} ingestion workflows, ${cronCount} cron triggers, Cloudflare CI entry points present, no GitHub Actions workflows`);
