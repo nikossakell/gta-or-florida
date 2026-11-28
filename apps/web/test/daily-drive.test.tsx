@@ -170,6 +170,15 @@ describe('Daily Drive: keyboard', () => {
     expect(keyAction(ev('n', editable), 'reveal', false)).toBeNull();
   });
 
+  it('works with a Greek (or any non-Latin) layout through the physical key', () => {
+    const typed = (key: string, code: string) => ({ ...ev(key), key, code });
+    expect(keyAction(typed('γ', 'KeyG'), 'question', false)).toBe('gta');
+    expect(keyAction(typed('Φ', 'KeyF'), 'question', false)).toBe('florida');
+    expect(keyAction(typed('ν', 'KeyN'), 'reveal', false)).toBe('next');
+    // A Latin letter is taken as typed (Dvorak: the physical G key types "i").
+    expect(keyAction(typed('i', 'KeyG'), 'question', false)).toBeNull();
+  });
+
   it('leaves Enter on links and buttons to the browser, but N / → still advance from a focused button', () => {
     const button = document.createElement('button');
     expect(keyAction(ev('Enter', button), 'reveal', false)).toBeNull();
