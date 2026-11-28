@@ -12,7 +12,12 @@ export const RESEARCH_VERIFIED = /\bVerified (\d{4}-\d{2}-\d{2})\b/;
 
 /** The approval request for one reviewed bank question (owner decision 2026-11-28: reviewed AI-assisted drafts, never declared human-written). */
 export function approvalRequest(e: BankEntry, questionId: string, decision: { reviewer: string; at: string }, link: { check?: LinkCheck; manual?: boolean }): ReviewRequest {
-  const researched = RESEARCH_VERIFIED.exec(e.notes ?? '')?.[1] ?? decision.at.slice(0, 10);
+  // Research notes carry a local calendar date; the dashboard decision is a UTC timestamp. Facts were verified
+  // before the owner approved them, so the verification date is never later than the decision's UTC date
+  // (otherwise a note written late in the evening east of UTC reads as a future date to the Worker).
+  const decided = decision.at.slice(0, 10);
+  const noted = RESEARCH_VERIFIED.exec(e.notes ?? '')?.[1];
+  const researched = noted && noted < decided ? noted : decided;
   const florida = e.origin === 'FLORIDA';
   return {
     questionId,
