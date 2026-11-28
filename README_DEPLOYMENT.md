@@ -1,6 +1,8 @@
 # Deployment & λειτουργία — runbook για τον owner
 
-> **Κατάσταση (2026-11-22):** ο κώδικας για Cloudflare Pages + Worker + D1 + Workers AI + GitHub Actions είναι έτοιμος και ελεγμένος **τοπικά** (Wrangler + local D1). **Δεν έχει γίνει κανένα deploy** στο Cloudflare: δεν υπάρχουν ακόμα λογαριασμός/credentials, D1 IDs ή workers.dev URLs. Όλα τα URLs παρακάτω με `<…>` είναι placeholders που θα πάρετε εσείς.
+> **Κατάσταση (2026-11-22):** ο κώδικας για Cloudflare Pages + Worker + D1 + Workers AI είναι έτοιμος και ελεγμένος **τοπικά** (Wrangler + local D1). **Δεν έχει γίνει κανένα deploy** στο Cloudflare: δεν υπάρχουν ακόμα λογαριασμός/credentials, D1 IDs ή workers.dev URLs. Όλα τα URLs παρακάτω με `<…>` είναι placeholders που θα πάρετε εσείς.
+
+> **CI/CD (2026-11-28):** τα GitHub Actions **αποσύρθηκαν**. Το GitHub μένει μόνο ως repository και πλατφόρμα PR. Builds, έλεγχοι και deploys γίνονται από το **Cloudflare Workers Builds** (API Worker) και το **Cloudflare Pages** (frontend), §6. Αναλυτικές ρυθμίσεις, ασφαλής σειρά rollout (μαζί με τα D1 migrations) και rollback: [`docs/cloudflare-ci-cd.md`](docs/cloudflare-ci-cd.md).
 
 Όλα τα commands τρέχουν από τη ρίζα του repo, εκτός αν γράφει `cd apps/worker`.
 
@@ -13,7 +15,7 @@
 | Frontend | Cloudflare Pages (Git integration, branch `main`) | React app, static. Μιλά με τον Worker μέσω `VITE_API_BASE_URL`. |
 | API | Cloudflare Worker `gta-florida-api-staging` / `gta-florida-api-production` | Public game + protected admin routes. Cron 00:05 & 12:05 UTC (ένα trigger) κρατά 30 ημέρες προγραμματισμένες. |
 | Βάση | Cloudflare D1 `gta-or-florida-staging` / `gta-or-florida-production` | Η **μόνη** production βάση. Χωριστές για staging/production. |
-| Ingestion | Cloudflare Worker `gta-florida-ingest-<env>` + Workflow `gta-florida-ingest-<env>` (cron 05:17 & 17:17 UTC) | Discovery → dedupe → link check → Workers AI → import, σε μικρά βήματα (§8b). Μιλά **μόνο** με τον API Worker του ίδιου env (Service Binding). Το `ingest.yml` (GitHub Actions) αποσύρεται μετά την επικύρωση. |
+| Ingestion | Cloudflare Worker `gta-florida-ingest-<env>` + Workflow `gta-florida-ingest-<env>` (cron 05:17 & 17:17 UTC) | Discovery → dedupe → link check → Workers AI → import, σε μικρά βήματα (§8b). Μιλά **μόνο** με τον API Worker του ίδιου env (Service Binding). Το παλιό `ingest.yml` (GitHub Actions) έχει αφαιρεθεί. |
 | AI | Workers AI binding (ingestion Worker)· REST μόνο από το τοπικό CLI | Granite (triage) → Gemma (extraction) για λίγα items. Ποτέ ανά παίκτη. |
 
 Δεν υπάρχει always-on server, VM, GPU, Render/Railway ή Ollama.
@@ -66,7 +68,7 @@ npx wrangler secret put ADMIN_TOKEN --env staging
 
 Tokens < 32 χαρακτήρων απενεργοποιούν τον αντίστοιχο ρόλο. Κρατήστε τα σε password manager· ποτέ σε `VITE_*`, ποτέ σε commit.
 
-**Rotation:** `wrangler secret put` με νέα τιμή → ενημέρωση του αντίστοιχου GitHub secret (§6) → το παλιό παύει αμέσως να ισχύει.
+**Rotation:** `wrangler secret put` με νέα τιμή → το παλιό παύει αμέσως να ισχύει (καμία αντιγραφή σε GitHub secrets).
 
 ## 4. Πρώτο deploy του Worker (staging)
 
@@ -110,48 +112,54 @@ Environment variables (Settings → Environment variables), **χωριστά** �
 
 Έτσι τα previews **δεν** αγγίζουν ποτέ το production D1. Το build παράγει `_headers` με CSP που επιτρέπει `connect-src` μόνο προς το συγκεκριμένο Worker origin. Χωρίς `404.html`, το Pages σερβίρει το SPA για deep links.
 
-Το Pages κάνει deploy μόνο του μέσω Git integration· **μην** στήσετε και GitHub workflow για Pages. Αντίστροφα, ο Worker κάνει deploy **μόνο** από το `deploy-worker.yml` (ή χειροκίνητα με wrangler) — μη συνδέσετε τον Worker και στο dashboard Git integration (διπλά deploys).
+Build settings του Pages (Git integration): build command **`npm run ci:web`** (secret scan, typecheck, tests του frontend, validate και build), output `apps/web/dist`, root κενό, production branch `main`, preview branches: Custom με include `integration/redesign-question-bank`. Αποτυχία οποιουδήποτε ελέγχου = κανένα upload. Λεπτομέρειες και build watch paths: §6 και `docs/cloudflare-ci-cd.md`.
 
-## 6. GitHub: environments, secrets, variables
+## 6. CI/CD: Cloudflare Workers Builds + Pages (όχι GitHub Actions)
 
-Settings → Environments → δημιουργήστε `staging` και `production`. Στο `production` ενεργοποιήστε **Required reviewers** (χειροκίνητη έγκριση για deploy/migrations/ingest).
-
-| Όνομα | Τύπος | Πού | Σημείωση |
+| Έργο | Branch | Εντολή στο Cloudflare | Σημείωση |
 |---|---|---|---|
-| `INGESTION_IMPORT_TOKEN` | secret | staging, production | ίδια τιμή με το αντίστοιχο Worker secret |
-| `CF_AI_ACCOUNT_ID` | secret (ή variable) | staging, production | Account ID |
-| `CF_AI_API_TOKEN` | secret | staging, production | Workers AI token (§7) |
-| `CLOUDFLARE_API_TOKEN` | secret | staging, production | **ξεχωριστό** deploy token (§7) |
-| `CLOUDFLARE_ACCOUNT_ID` | secret | staging, production | Account ID |
-| `ADMIN_TOKEN` | secret (προαιρετικό) | staging, production | μόνο για αυτόματο `sources/sync` μετά το deploy |
-| `INGESTION_API_URL` | variable | staging, production | Worker URL του env |
-| `WORKER_URL` | variable | staging, production | ίδιο URL (smoke/sync μετά το deploy) |
-| `SMOKE_URL` | variable | production | για το daily heartbeat |
-| `WORKER_DEPLOY_ENABLED` | variable | staging | `true` → auto deploy staging σε push στο `main` |
-| `AI_PROVIDER` | variable (προαιρετικό) | staging, production | `auto` (default) / `workers-ai` / `mock` / `off` |
+| API Worker `gta-florida-api-staging` (Workers Builds) | `integration/redesign-question-bank` | Deploy: `npm run ci:worker && npm run deploy:ci:staging -w @gof/worker && npm run smoke:ci` · άλλα branches: `npm run ci:worker` (μόνο έλεγχοι) | υπάρχων Worker → Settings → Build → Connect |
+| API Worker `gta-florida-api-production` (Workers Builds) | `main` | Deploy: `npm run ci:worker && npm run deploy:ci:production -w @gof/worker && npm run smoke:ci` · χωρίς non-production builds | μόνο στο production rollout |
+| Pages `gta-or-florida` | production `main` · preview `integration/redesign-question-bank` | Build: `npm run ci:web` · output `apps/web/dist` | env vars Production/Preview (§5) |
 
-Τα scheduled workflows μένουν **αδρανή** όσο λείπουν τα variables (`INGESTION_API_URL`, `SMOKE_URL`), άρα δεν αποτυγχάνουν πριν το setup. Σε public repo τα GitHub-hosted minutes είναι δωρεάν· σε private ισχύει το allowance του plan σας.
+- `ci:worker` = secret scan, typecheck, **όλα** τα tests (και τα workerd/D1), validate, Worker bundle, όλα τα migrations σε καθαρή τοπική βάση. Τρέχει **μέσα** στο deploy command (`έλεγχοι && deploy`), άρα αποτυχία = κανένα deploy.
+- `ci:web` = το υποσύνολο που μπορεί να τρέξει στο gVisor περιβάλλον του Pages (χωρίς workerd).
+- Τα **remote D1 migrations δεν τρέχουν ποτέ αυτόματα**: backup και migration με το χέρι πριν από το πρώτο deploy κάθε env (`npm run db:backup:<env> -w @gof/worker`, `npm run db:migrate:<env> -w @gof/worker`).
+- Τα Worker secrets (`ADMIN_TOKEN`, `INGESTION_IMPORT_TOKEN`) μπαίνουν μία φορά ανά env με `wrangler secret put` και μένουν σε κάθε deploy. Τα builds δεν τα χρειάζονται.
+- Pages και Worker κάνουν deploy **ανεξάρτητα** (όχι atomic): πρώτα το API, κρατήστε τα API backward-compatible.
+
+**Χειροκίνητα (εσείς, στα dashboards):**
+1. **Τώρα, πριν το επόμενο push:** GitHub → Settings → Actions → General → **Disable actions**. Τα scheduled workflows του `main` συνεχίζουν να τρέχουν μέχρι τότε.
+2. Cloudflare: σύνδεση του `gta-florida-api-staging` και του Pages project, με τις ρυθμίσεις του πίνακα.
+3. Μετά την επαλήθευση, διαγραφή των GitHub Actions secrets, variables και environments που δεν χρειάζονται πια:
+   - secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `ADMIN_TOKEN`, `INGESTION_IMPORT_TOKEN`, `CF_AI_ACCOUNT_ID`, `CF_AI_API_TOKEN`, `NETLIFY_BUILD_HOOK_URL`·
+   - variables: `WORKER_DEPLOY_ENABLED`, `WORKER_URL`, `INGESTION_API_URL`, `AI_PROVIDER`, `ALLOW_PLACEHOLDER_CONTENT`, `SMOKE_URL`·
+   - environments: `staging`, `production`, `github-pages`.
+
+   Μετά, ανάκληση στο Cloudflare όποιου API token υπήρχε μόνο για τα Actions.
+4. Branch protection του `main`: αφαιρέστε το παλιό required check (`check` του CI) και προσθέστε τα checks του Cloudflare (Workers Builds staging, Pages) μόλις εμφανιστούν.
+5. Αφήστε εγκατεστημένο το GitHub App **Cloudflare Workers and Pages**.
 
 ## 7. Cloudflare API tokens (ελάχιστα δικαιώματα)
 
 Dashboard → My Profile → API Tokens → Create Token:
 
 1. **Workers AI (ingestion):** template «Workers AI» (δικαιώματα *Workers AI – Read* και *Workers AI – Edit*). Μόνο στο `CF_AI_API_TOKEN`. Δεν χρειάζεται τίποτα άλλο.
-2. **Deploy (GitHub Actions):** custom token με *Account → Workers Scripts – Edit* και *Account → D1 – Edit* (για migrations/export), περιορισμένο στον λογαριασμό σας. Αν το `wrangler deploy` ζητήσει επιπλέον scope (μπορεί να αλλάξει με εκδόσεις wrangler), προσθέστε μόνο ό,τι αναφέρει το μήνυμα λάθους. Μόνο στο `CLOUDFLARE_API_TOKEN`.
+2. **Deploy:** το Workers Builds δημιουργεί και χρησιμοποιεί δικό του token (Workers Scripts – Edit). Αν ένα deploy αποτύχει για δικαίωμα, προσθέστε μόνο ό,τι αναφέρει το μήνυμα λάθους. Τα τοπικά backups και migrations τρέχουν με `wrangler login` (ή token με *D1 – Edit*) από τον υπολογιστή σας — ποτέ μέσα σε build.
 
-Τρία ανεξάρτητα secrets: AI token ≠ deploy token ≠ ingestion import token.
+Ανεξάρτητα secrets: AI token ≠ deploy token ≠ ingestion import token.
 
 ## 8. Πρώτη ingestion & μεταφορά παλιών δεδομένων (staging)
 
-1. Actions → **Ingest content** → Run workflow → environment `staging`, `dry_run: true`. Ελέγξτε το summary/artifact (discovered, φίλτρα, AI requests, εκτίμηση neurons).
-2. Ξανά με `dry_run: false` → τα items μπαίνουν ως **candidates** (shadow mode).
+1. Το παλιό workflow **Ingest content** (GitHub Actions) αφαιρέθηκε. Τοπικά: `npm run ingest:batch -- --source all --dry-run` (με `.env`). Ελέγξτε το report (discovered, φίλτρα, AI requests, εκτίμηση neurons).
+2. Ξανά χωρίς `--dry-run` → τα items μπαίνουν ως **candidates** (shadow mode). Η προγραμματισμένη ingestion γίνεται από το ingest Worker (§8b), όταν ενεργοποιηθεί.
 3. Οι 54 GTA candidates της παλιάς SQLite (export ήδη στο `backups/legacy-export/`, git-ignored):
    ```bash
    INGESTION_IMPORT_TOKEN=<staging service token> npm run legacy:import -- --to https://gta-florida-api-staging.<subdomain>.workers.dev
    ```
    Είναι idempotent (ξανατρέξιμο χωρίς διπλότυπα). Τίποτα δεν εγκρίνεται κατά τη μεταφορά.
 4. Αν το GDELT απαντά `429` (συνέβη επανειλημμένα από το dev IP μας): είναι αναμενόμενο· ο κώδικας κάνει backoff και σταματά, και ο cursor δεν προχωρά. Το wiki λειτουργεί κανονικά.
-5. **Χειροκίνητη εισαγωγή ενός άρθρου Florida** (όταν το GDELT δίνει `429` ή τα Actions είναι μπλοκαρισμένα). Τρέχει τοπικά με το `.env` (`INGESTION_API_URL`, `INGESTION_IMPORT_TOKEN`, προαιρετικά `REVIEWER`, `CF_AI_*`):
+5. **Χειροκίνητη εισαγωγή ενός άρθρου Florida** (όταν το GDELT δίνει `429`). Τρέχει τοπικά με το `.env` (`INGESTION_API_URL`, `INGESTION_IMPORT_TOKEN`, προαιρετικά `REVIEWER`, `CF_AI_*`):
    ```bash
    npm run ingest:url -- --env staging --dry-run "https://www.example-publisher.com/news/article"   # πρώτα έλεγχος
    npm run ingest:url -- --env staging "https://www.example-publisher.com/news/article"             # import
@@ -184,7 +192,7 @@ Dashboard → My Profile → API Tokens → Create Token:
 **Πρώτο deploy στο staging (με τη σειρά):**
 
 ```bash
-npm run ci                                             # typecheck + tests + validate
+npm run ci                                             # ό,τι τρέχουν τα Cloudflare builds (ci:worker) + web και legacy builds
 npm run deploy:worker:staging                          # API: /titles?limit=…, MANUAL_SUBMISSION gate, approval host check, cron "5 0,12 * * *"
 cd apps/ingest-worker
 npx wrangler secret put INGESTION_IMPORT_TOKEN --env staging   # ΙΔΙΑ τιμή με το secret του gta-florida-api-staging
@@ -200,7 +208,7 @@ npx wrangler workflows instances describe gta-florida-ingest-staging latest
 npx wrangler deploy --env staging
 ```
 
-και μετά από 1–2 επιτυχημένα scheduled runs: διαγραφή του `.github/workflows/ingest.yml` (το τοπικό `npm run ingest:batch` / `ingest:url` μένουν για debugging). **Production:** ίδια βήματα με `--env production`, μόνο όταν το αποφασίσετε· τίποτα δεν γίνεται αυτόματα.
+(το παλιό `.github/workflows/ingest.yml` έχει ήδη αφαιρεθεί· το τοπικό `npm run ingest:batch` / `ingest:url` μένουν για debugging· αυτόματο deploy του ingest Worker μέσω Workers Builds: `docs/cloudflare-ci-cd.md`, «Ingest Worker»). **Production:** ίδια βήματα με `--env production`, μόνο όταν το αποφασίσετε· τίποτα δεν γίνεται αυτόματα.
 
 **Τοπικά:** `npm run db:migrate:local && npm run dev:ingest` (και οι δύο Workers στο workerd, local D1, mock AI)· `apps/ingest-worker/.dev.vars` με `INGESTION_IMPORT_TOKEN` (ίδιο με `apps/worker/.dev.vars`) και `INGEST_ENABLED=true`· trigger: `curl "http://localhost:8788/cdn-cgi/local/scheduled?cron=17+5,17+*+*+*"`.
 
@@ -356,7 +364,7 @@ npm run admin -- schedule --days 30 --dry-run && npm run admin -- schedule --day
 - Ο Worker (cron 00:05 & 12:05 UTC) και κάθε ingest run του CLI με `--schedule` κρατούν `SCHEDULE_AHEAD_DAYS` (30, έως 90) ημέρες μπροστά, μόνο από εγκεκριμένο απόθεμα· γράφουν ό,τι μπορεί να γεμίσει, ώστε η σημερινή μέρα να έχει γύρο. Οι υπάρχουσες ημέρες δεν αλλάζουν ποτέ.
 - Χειροκίνητα: `npm run admin -- schedule --days 30` ή `--days 90` (`--dry-run` για δοκιμή, `--cooldown N`). Ολόκληρη η περίοδος σχεδιάζεται πρώτα: αν δεν γεμίζει, δεν γράφεται τίποτα και το μήνυμα λέει ποια ημέρα και ποιο απόθεμα/cooldown φταίει. Exit code 2 = έλλειψη/προειδοποιήσεις.
 - Απόθεμα-στόχος: ~300 εγκεκριμένες (150 + 150). Με cooldown 30 ημερών χρειάζονται ≥ 150 διαφορετικά γεγονότα για συνεχή περιστροφή.
-- Το **Daily heartbeat** (`smoke.yml`, 00:40 UTC) αποτυγχάνει — και το GitHub σας ειδοποιεί — όταν δεν υπάρχει σημερινός γύρος.
+- Το παλιό **Daily heartbeat** (`smoke.yml`) αφαιρέθηκε μαζί με τα GitHub Actions. Ο cron του Worker καταγράφει `no_round_today` στα Workers Logs. Για ειδοποίηση: οποιοδήποτε uptime monitor στο `GET /api/health` με alert όταν `"todayReady":false`· χειροκίνητα: `REQUIRE_TODAY=1 npm run smoke -- <url>`.
 
 ## 11. Αυτόματη δημοσίευση (προαιρετικά, αργότερα)
 
@@ -377,20 +385,21 @@ Default `AUTO_PUBLISH_MODE=shadow`: το gate καταγράφει τι **θα**
 | D1 | 5 GB, 5M rows read/ημέρα, 100k rows written/ημέρα, 50 queries/invocation | Το import είναι 1 batch (= 1 query) ανά request. |
 | Workers AI | **10.000 neurons/ημέρα** ανά λογαριασμό | Granite 4 Micro: 1.542 neurons/M input, 10.158/M output· Gemma 4 26B-A4B: 9.091 / 27.273. Default budget ανά run: 60 requests, 2.500 neurons (≈ 2 runs/ημέρα μέσα στο free). Πάνω από το free: αποτυγχάνει (Free) ή $0,011/1.000 neurons (Paid, από $5/μήνα). |
 | Pages | static, Git builds | — |
-| GitHub Actions | δωρεάν σε public repo | private: allowance του plan |
+| Workers Builds | 3.000 build minutes/μήνα, 1 ταυτόχρονο build, 20′ timeout | `ci:worker` ≈ 3–4′ ανά build |
+| Pages builds | 500 builds/μήνα, 1 ταυτόχρονο build, 20′ timeout | build watch paths περιορίζουν τα άσκοπα builds |
 
 Δεν περιλαμβάνονται: news APIs επί πληρωμή, άδειες για αυτούσιους τίτλους, custom domain, analytics.
 
 ## 13. Cutover από Netlify
 
 1. Staging: health, γύρος, απάντηση/reveal, links πηγών, withdraw, caching, CORS (`npm run smoke -- <url>`), preview του Pages δείχνει staging.
-2. Production: deploy Worker (Actions → Deploy Worker → `production`, `apply_migrations: true` την πρώτη φορά), `sources:sync`, εισαγωγή/έγκριση αποθέματος, `schedule --days 30`, smoke.
+2. Production: τα βήματα P1–P7 του `docs/cloudflare-ci-cd.md` (backup + migrations πρώτα, secrets, Workers Builds για `main`, merge, `sources:sync`, εισαγωγή/έγκριση αποθέματος, `schedule --days 30`, smoke).
 3. Επιβεβαιώστε ότι `npm run smoke -- <production worker>` περνά και ότι το Pages production δείχνει σωστά.
-4. Μόνο τότε: (custom domain στο Pages, αν θέλετε) → διαγράψτε `netlify.toml`, `.github/workflows/netlify-daily.yml`, `.github/workflows/pages.yml`, και το Netlify site.
+4. Μόνο τότε: (custom domain στο Pages, αν θέλετε) → διαγράψτε το `netlify.toml` και το Netlify site (τα `netlify-daily.yml` / `pages.yml` έχουν ήδη αφαιρεθεί· προαιρετικά κάντε unpublish και το GitHub Pages site).
 
 ## 14. Backups & rollback
 
-- **D1 snapshot:** `npx wrangler d1 export gta-or-florida-production --remote --env production --output prod-YYYYMMDD.sql` (το deploy workflow το κάνει αυτόματα πριν από migrations και το κρατά ως artifact 30 ημέρες). Restore σε νέα βάση: `wrangler d1 execute <db> --remote --file prod-YYYYMMDD.sql`.
+- **D1 snapshot:** `npx wrangler d1 export gta-or-florida-production --remote --env production --output prod-YYYYMMDD.sql` (ή `npm run db:backup:production -w @gof/worker` → `backups/`, git-ignored· **πάντα** πριν από migrations). Restore σε νέα βάση: `wrangler d1 execute <db> --remote --file prod-YYYYMMDD.sql`.
 - **D1 Time Travel:** `npx wrangler d1 time-travel info gta-or-florida-production` / `… restore` (point-in-time· διαθέσιμο παράθυρο ανά plan — ελέγξτε τα docs).
 - **Worker:** `npx wrangler deployments list --env production` και `npx wrangler rollback --env production` (προηγούμενη έκδοση).
 - Migrations: μόνο backward-compatible αλλαγές όπου γίνεται (νέες στήλες/πίνακες)· ποτέ destructive χωρίς export.
@@ -400,7 +409,7 @@ Default `AUTO_PUBLISH_MODE=shadow`: το gate καταγράφει τι **θα**
 ```bash
 npm run dev            # wrangler dev (local D1) + Vite
 npm run dev:seed       # placeholder fixtures μόνο για local
-npm run ci             # typecheck + tests + validate
+npm run ci             # ό,τι τρέχουν τα Cloudflare builds (ci:worker) + web και legacy builds
 npm run ingest:batch -- --dry-run --ai mock --source gta    # live discovery, χωρίς import/AI κόστος
 npm run ingest:url -- --dry-run --ai off "<https-article-url>"   # ένα άρθρο, χωρίς import/AI κόστος
 ```

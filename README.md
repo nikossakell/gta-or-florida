@@ -145,7 +145,7 @@ Protected (`Authorization: Bearer …`, χωρίς CORS): `import`, `known`, `ti
 
 ## Legacy static demo
 
-Το `npm run build:pages` (GitHub Pages / Netlify, pre-generated JSON από `data/*.json`) παραμένει μόνο για να σερβίρει το τρέχον live demo μέχρι το cutover· μετά διαγράφονται `netlify.toml`, `.github/workflows/netlify-daily.yml` και `pages.yml`. Τα Florida items του demo είναι placeholders και τα GTA-style items πρωτότυπη fiction — ποτέ στο production bank.
+Το `npm run build:pages` (GitHub Pages / Netlify, pre-generated JSON από `data/*.json`) παραμένει μόνο για να σερβίρει το τρέχον live demo μέχρι το cutover· μετά διαγράφεται το `netlify.toml` (τα GitHub Actions workflows έχουν ήδη αφαιρεθεί: CI/CD μέσω Cloudflare Workers Builds + Pages, βλ. `docs/cloudflare-ci-cd.md`). Τα Florida items του demo είναι placeholders και τα GTA-style items πρωτότυπη fiction — ποτέ στο production bank.
 
 ## Privacy
 
