@@ -2,17 +2,14 @@ import { isIsoDate } from '@gof/core';
 import { createRootRoute, createRoute, createRouter, Outlet, useParams, useSearch } from '@tanstack/react-router';
 import { About, NotFound } from './routes/About.tsx';
 import { Archive } from './routes/Archive.tsx';
-import { Landing } from './routes/Landing.tsx';
+import { DriveLanding } from './daily-drive/screens/DriveLanding.tsx';
 import { PlayScreen } from './routes/Play.tsx';
 import { ResultsScreen } from './routes/Results.tsx';
 
 const rootRoute = createRootRoute({
   component: () => (
     <>
-      <a
-        href="#content"
-        className="bg-sun text-ink sr-only z-50 rounded-xl px-4 py-3 font-bold focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
-      >
+      <a href="#content" className="skip">
         Skip to content
       </a>
       <div id="content">
@@ -23,7 +20,7 @@ const rootRoute = createRootRoute({
   notFoundComponent: NotFound,
 });
 
-const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: Landing });
+const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: DriveLanding });
 
 const playTodayRoute = createRoute({
   getParentRoute: () => rootRoute,

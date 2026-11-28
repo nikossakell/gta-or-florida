@@ -12,7 +12,7 @@ function isTyping(el: Element | null): boolean {
 }
 
 /**
- * Daily Drive keyboard map (additive to the legacy G / F / Enter / →):
+ * Keyboard map:
  *  - question phase: G = GTA, F = Florida
  *  - reveal phase: Enter, N or → = next
  * Ignored while busy, with a modifier held, or while typing in a field. Enter on a link, button or

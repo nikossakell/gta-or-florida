@@ -1,6 +1,6 @@
 /**
  * The pixel engine builds its sprites with <canvas> as soon as it is imported, so app modules
- * never import it directly. boot.ts (browser only, flag on) loads it and hands it over here;
+ * never import it directly. boot.ts (browser only) loads it and hands it over here;
  * tests hand over a mock with provideEngine().
  */
 import { useSyncExternalStore } from 'react';

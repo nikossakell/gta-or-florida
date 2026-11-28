@@ -1,15 +1,14 @@
 import { utcDate } from '@gof/core';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { ApiError } from '../api/client.ts';
 import { challengeQuery } from '../api/queries.ts';
-import { EmptyState, ErrorState, LoadingBlock } from '../components/StateScreens.tsx';
-import { ButtonLink, Column, TopBar } from '../components/ui.tsx';
-import { DAILY_DRIVE } from '../daily-drive/flag.ts';
+import { EmptyState, ErrorState, LoadingState, Page, PastRoundsLink } from '../daily-drive/components/Page.tsx';
+import { ZONE_COUNT } from '../daily-drive/lib/copy.ts';
+import { DriveResults } from '../daily-drive/screens/DriveResults.tsx';
 import { GameSession } from '../features/game/GameSession.tsx';
 import { getResult, type StoredResult } from '../lib/storage.ts';
-import { ResultsView } from './Results.tsx';
 
 export function PlayScreen({ id, practice = false }: { id: 'today' | string; practice?: boolean }) {
   // Fixed for this visit: a round in progress at midnight is not swapped out mid-game.
@@ -20,12 +19,9 @@ export function PlayScreen({ id, practice = false }: { id: 'today' | string; pra
 
   if (query.isPending) {
     return (
-      <Column>
-        <TopBar />
-        <div className="mt-4">
-          <LoadingBlock label="Loading headlines…" />
-        </div>
-      </Column>
+      <Page label="DAILY DRIVE">
+        <LoadingState label="Loading headlines…" />
+      </Page>
     );
   }
 
@@ -35,32 +31,19 @@ export function PlayScreen({ id, practice = false }: { id: 'today' | string; pra
     if (code === 'ROUND_WITHDRAWN') {
       // A published round was withdrawn after a correction: same message for everyone, never a silent substitute.
       return (
-        <Column>
-          <TopBar />
-          <EmptyState
-            title="Round withdrawn"
-            action={
-              <ButtonLink to="/archive" variant="secondary" className="w-full">
-                Browse past rounds
-              </ButtonLink>
-            }
-          >
+        <Page label="DAILY DRIVE">
+          <EmptyState title="Round withdrawn" action={<PastRoundsLink />}>
             {err.message}
           </EmptyState>
-        </Column>
+        </Page>
       );
     }
     if (code === 'DAILY_NOT_READY' || code === 'NOT_FOUND' || code === 'FUTURE_CHALLENGE') {
       return (
-        <Column>
-          <TopBar />
+        <Page label="DAILY DRIVE">
           <EmptyState
             title={code === 'DAILY_NOT_READY' ? 'No headlines today' : code === 'FUTURE_CHALLENGE' ? 'No peeking' : 'Round not found'}
-            action={
-              <ButtonLink to="/archive" variant="secondary" className="w-full">
-                Browse past rounds
-              </ButtonLink>
-            }
+            action={<PastRoundsLink />}
           >
             {code === 'DAILY_NOT_READY'
               ? 'Today’s round hasn’t been published yet. We don’t recycle or invent questions to fill gaps — check back soon.'
@@ -68,25 +51,24 @@ export function PlayScreen({ id, practice = false }: { id: 'today' | string; pra
                 ? 'That round isn’t out yet. Come back on the day.'
                 : 'That round isn’t available. Only the last week of rounds can be played.'}
           </EmptyState>
-        </Column>
+        </Page>
       );
     }
     return (
-      <Column>
-        <TopBar />
+      <Page label="DAILY DRIVE">
         <ErrorState
           error={err}
           onRetry={() => query.refetch()}
           message={id === 'today' ? undefined : 'We couldn’t load this round’s headlines. Check your connection, then try again.'}
         />
-      </Column>
+      </Page>
     );
   }
 
   const challenge = query.data;
 
   if (practiceResult) {
-    return <ResultsView result={practiceResult} practice />;
+    return <DriveResults result={practiceResult} practice />;
   }
 
   // One scored attempt per browser: completed rounds go to their results (or a replay).
@@ -94,19 +76,26 @@ export function PlayScreen({ id, practice = false }: { id: 'today' | string; pra
     return <Navigate to="/results/$date" params={{ date: challenge.date }} replace />;
   }
 
-  // Daily Drive lays out its own full-height play screen (.wrap); the legacy UI keeps its column.
-  const Shell = DAILY_DRIVE && challenge.questions.length === 5 ? Fragment : Column;
+  // A drive has exactly one headline per checkpoint.
+  if (challenge.questions.length !== ZONE_COUNT) {
+    return (
+      <Page label="DAILY DRIVE">
+        <EmptyState title="Round unavailable" action={<PastRoundsLink />}>
+          This round doesn’t have {ZONE_COUNT} headlines, so it can’t be played.
+        </EmptyState>
+      </Page>
+    );
+  }
+
   return (
-    <Shell>
-      <GameSession
-        key={`${challenge.challengeId}:${practice ? 'practice' : 'scored'}`}
-        challenge={challenge}
-        practice={practice}
-        onComplete={(result, saved) => {
-          if (saved) void navigate({ to: '/results/$date', params: { date: result.date } });
-          else setPracticeResult(result);
-        }}
-      />
-    </Shell>
+    <GameSession
+      key={`${challenge.challengeId}:${practice ? 'practice' : 'scored'}`}
+      challenge={challenge}
+      practice={practice}
+      onComplete={(result, saved) => {
+        if (saved) void navigate({ to: '/results/$date', params: { date: result.date } });
+        else setPracticeResult(result);
+      }}
+    />
   );
 }

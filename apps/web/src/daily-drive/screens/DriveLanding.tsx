@@ -12,7 +12,7 @@ import { DriveMap } from '../components/DriveMap.tsx';
 import { Gus } from '../components/Gus.tsx';
 import { COPY } from '../lib/copy.ts';
 
-/** Daily Drive landing. Same query and the same start/resume/result/error states as the legacy landing. */
+/** Landing page: pitch, attract-mode road map, Gus, today’s drive and local stats. */
 export function DriveLanding() {
   const utcDay = useUtcDay();
   const today = useQuery(challengeQuery('today', utcDay));
@@ -106,7 +106,7 @@ export function DriveLanding() {
   );
 }
 
-/** Start / resume / result / not-ready / withdrawn / error: the legacy TodayCta states, restyled. */
+/** Today’s drive: start / resume / result / not ready / withdrawn / error. */
 function TodayDrive() {
   const utcDay = useUtcDay();
   const today = useQuery(challengeQuery('today', utcDay));

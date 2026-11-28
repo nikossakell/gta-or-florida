@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { COPY } from '../lib/copy.ts';
 
 const SEGMENTS = 12;
-/** Same thresholds as the legacy GameHeader: announced once each, not every second. */
+/** Time warnings are announced once each, not every second. */
 const ANNOUNCE_AT = [30, 10, 5];
 
 /**

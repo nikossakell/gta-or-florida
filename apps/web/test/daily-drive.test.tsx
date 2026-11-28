@@ -13,18 +13,10 @@ import { endingFor, endingOf } from '../src/daily-drive/lib/endings.ts';
 import { trailingStreak } from '../src/daily-drive/lib/streak.ts';
 import { DriveResults } from '../src/daily-drive/screens/DriveResults.tsx';
 import { GameSession } from '../src/features/game/GameSession.tsx';
-import { getResult, type StoredResult } from '../src/lib/storage.ts';
-import { SPOILER_NOTICE } from '../src/components/ui.tsx';
+import { getProgress, getResult, type StoredResult } from '../src/lib/storage.ts';
 import { COPY } from '../src/daily-drive/lib/copy.ts';
-import { Landing } from '../src/routes/Landing.tsx';
-
-// The flag is a build-time constant; here it is a live binding so one file can run both UIs.
-const flag = vi.hoisted(() => ({ on: true }));
-vi.mock('../src/daily-drive/flag.ts', () => ({
-  get DAILY_DRIVE() {
-    return flag.on;
-  },
-}));
+import { DriveLanding } from '../src/daily-drive/screens/DriveLanding.tsx';
+import { About } from '../src/routes/About.tsx';
 
 // ---- pixel engine mock (the real one needs <canvas>) ----
 type FakeMap = {
@@ -64,7 +56,6 @@ function fakeEngine(): Engine {
 
 beforeEach(() => {
   maps = [];
-  flag.on = true;
   provideEngine(fakeEngine());
 });
 afterEach(() => {
@@ -235,7 +226,7 @@ describe('Daily Drive: <DriveMap>', () => {
   });
 });
 
-/** Plays the same choices with either UI and returns the saved result. */
+/** Plays the given choices with the mouse or the keyboard and returns the saved result. */
 async function playRound(choices: readonly ('gta' | 'florida')[], useKeys: boolean) {
   mockApi();
   const user = userEvent.setup();
@@ -247,10 +238,9 @@ async function playRound(choices: readonly ('gta' | 'florida')[], useKeys: boole
     if (useKeys) await user.keyboard(c === 'gta' ? 'g' : 'f');
     else await user.click(screen.getByRole('button', { name: c === 'gta' ? /^GTA/ : /^FLORIDA/ }));
     const right = c === TRUTH[i];
-    if (flag.on) await screen.findByRole('heading', { name: right ? 'CORRECT!' : 'WRONG WAY!' });
-    else await screen.findByRole('heading', { name: right ? 'Correct!' : 'Not quite.' });
-    if (useKeys && flag.on) await user.keyboard(i % 2 ? 'n' : '{ArrowRight}');
-    else await user.click(screen.getByRole('button', { name: flag.on ? /NEXT HEADLINE|SEE MY POSTCARD/ : /Next headline|See my results/ }));
+    await screen.findByRole('heading', { name: right ? 'CORRECT!' : 'WRONG WAY!' });
+    if (useKeys) await user.keyboard(i % 2 ? 'n' : '{ArrowRight}');
+    else await user.click(screen.getByRole('button', { name: /NEXT HEADLINE|SEE MY POSTCARD/ }));
   }
   await waitFor(() => expect(completed).not.toBeNull());
   view.unmount();
@@ -303,16 +293,51 @@ describe('Daily Drive: a full round through the existing game logic', () => {
     expect(getResult('2026-11-19')?.score).toBe(4);
   }, FULL_ROUND_TIMEOUT);
 
-  it('gives the same saved result with the flag on (keyboard) and off (legacy UI)', async () => {
-    flag.on = true;
-    const on = await playRound(CHOICES, true);
+  it('gives the same saved result with the keyboard as with the mouse', async () => {
+    const keys = await playRound(CHOICES, true);
     localStorage.clear();
-    flag.on = false;
-    const off = await playRound(CHOICES, false);
+    const mouse = await playRound(CHOICES, false);
     const strip = (r: StoredResult) => ({ ...r, completedAt: '', seconds: 0 });
-    expect(strip(on)).toEqual(strip(off));
-    expect(on.score).toBe(4);
+    expect(strip(keys)).toEqual(strip(mouse));
+    expect(keys.score).toBe(4);
   }, FULL_ROUND_TIMEOUT);
+
+  it('opens sources in a new tab without a referrer, and answers only come from /answer', async () => {
+    const fetchMock = mockApi();
+    const user = userEvent.setup();
+    withProviders(<GameSession challenge={challenge} practice={false} onComplete={() => {}} />);
+    await user.click(await screen.findByRole('button', { name: /^FLORIDA/ }));
+    const article = await screen.findByRole('link', { name: /Read full article/ });
+    expect(article).toHaveAttribute('target', '_blank');
+    expect(article.getAttribute('rel')).toMatch(/noopener/);
+    expect(article.getAttribute('rel')).toMatch(/noreferrer/);
+    expect(getProgress('2026-11-19')).toMatchObject({ index: 0, phase: 'reveal' });
+    // The challenge never included answers: the only request so far is the /answer for this choice.
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual([expect.stringMatching(/\/answer$/)]);
+  });
+
+  it('does not save practice replays', async () => {
+    mockApi();
+    let completed: StoredResult | null = null;
+    const user = userEvent.setup();
+    withProviders(<GameSession challenge={challenge} practice onComplete={(r) => (completed = r)} />);
+    for (let i = 0; i < 5; i++) {
+      await user.click(await screen.findByRole('button', { name: /^GTA/ }));
+      await user.click(await screen.findByRole('button', { name: /NEXT HEADLINE|SEE MY POSTCARD/ }));
+    }
+    await waitFor(() => expect(completed).not.toBeNull());
+    expect(getResult('2026-11-19')).toBeNull();
+    expect(getProgress('2026-11-19')).toBeNull();
+  }, FULL_ROUND_TIMEOUT);
+
+  it('shows a retryable error when the network fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+    const user = userEvent.setup();
+    withProviders(<GameSession challenge={challenge} practice={false} onComplete={() => {}} />);
+    await user.click(await screen.findByRole('button', { name: /^GTA/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Connection hiccup/);
+    expect(screen.getByRole('button', { name: /^GTA/ })).toBeEnabled();
+  });
 
   it('time’s up: unanswered checkpoints are marked unanswered and the existing "see results" step remains', async () => {
     mockApi();
@@ -387,21 +412,22 @@ describe('Daily Drive: results', () => {
   });
 });
 
-describe('spoiler notice in both landing variants', () => {
-  it('uses the same wording in the Daily Drive copy deck as in the legacy footer', () => {
-    expect(COPY.spoilerNotice).toBe(SPOILER_NOTICE);
+describe('spoiler notice', () => {
+  it('uses the agreed wording', () => {
+    expect(COPY.spoilerNotice).toBe('Some questions may contain minor spoilers from the Grand Theft Auto series.');
   });
 
-  it.each([
-    ['Daily Drive (flag on)', true],
-    ['legacy (flag off)', false],
-  ])('shows it discreetly in the %s footer, without a modal or consent step', async (_name, on) => {
-    flag.on = on;
+  it('shows it discreetly in the landing footer, without a modal or consent step', async () => {
     mockApi();
-    withProviders(<Landing />);
-    const notice = await screen.findByText((_text, el) => el?.tagName === 'P' && (el.textContent ?? '').includes(SPOILER_NOTICE));
+    withProviders(<DriveLanding />);
+    const notice = await screen.findByText((_text, el) => el?.tagName === 'P' && (el.textContent ?? '').includes(COPY.spoilerNotice));
     expect(notice.textContent).toMatch(/Not affiliated with or endorsed by Rockstar Games/);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('is repeated in the About page disclaimer', async () => {
+    withProviders(<About />);
+    expect(await screen.findByText((text) => text.startsWith(COPY.spoilerNotice))).toBeTruthy();
   });
 });

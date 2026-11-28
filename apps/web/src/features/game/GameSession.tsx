@@ -3,13 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { api, ApiError } from '../../api/index.ts';
 import { clearProgress, getProgress, saveProgress, saveResult, type PlayMode, type StoredResult } from '../../lib/storage.ts';
-import { GameHeader } from './GameHeader.tsx';
-import { QuestionView } from './QuestionView.tsx';
-import { RevealView } from './RevealView.tsx';
 import { initialSession, sessionReducer, toProgress } from './session.ts';
-import { TimeUpView } from './TimeUpView.tsx';
-import { TopBar } from '../../components/ui.tsx';
-import { DAILY_DRIVE } from '../../daily-drive/flag.ts';
 import { DriveSession } from '../../daily-drive/screens/DriveSession.tsx';
 
 function friendly(error: unknown, fallback: string): string {
@@ -34,7 +28,6 @@ export function GameSession({
   const total = challenge.questions.length;
   const limitMs = challenge.timeLimitSeconds * 1000;
   const question = challenge.questions[state.index];
-  const lastAnswer = state.answers[state.index];
 
   // Clock: runs only while a question is on screen.
   useEffect(() => {
@@ -116,56 +109,18 @@ export function GameSession({
   }, [state.index, total, finish]);
 
   const remainingMs = limitMs > 0 ? Math.max(0, limitMs - state.elapsedMs) : 0;
-  const showTimeUp = state.phase === 'timeup' || (state.phase === 'finishing' && state.finishFrom === 'timeup');
-  const showReveal = (state.phase === 'reveal' || (state.phase === 'finishing' && state.finishFrom === 'reveal')) && lastAnswer;
-
-  // Daily Drive redesign (presentation only): same state, same callbacks. 5-question rounds only.
-  if (DAILY_DRIVE && total === 5) {
-    return (
-      <DriveSession
-        label={practice ? 'REPLAY' : mode === 'daily' ? 'DAILY DRIVE' : 'ARCHIVE'}
-        number={challenge.number}
-        questions={challenge.questions}
-        state={state}
-        remainingMs={remainingMs}
-        limitMs={limitMs}
-        onChoose={choose}
-        onNext={next}
-        onFinish={finish}
-      />
-    );
-  }
-
+  // Presentation: the Daily Drive session; all state and callbacks live here.
   return (
-    <>
-      {showTimeUp && <TopBar />}
-      {!showTimeUp && (
-        <GameHeader
-          number={challenge.number}
-          index={state.index}
-          total={total}
-          remainingMs={remainingMs}
-          limitMs={limitMs}
-          paused={state.phase !== 'question'}
-          answers={state.answers}
-          label={practice ? 'Replay' : mode === 'daily' ? 'Daily' : 'Archive'}
-        />
-      )}
-      <main>
-        {showTimeUp ? (
-          <TimeUpView answers={state.answers} total={total} onSeeResults={finish} busy={state.phase === 'finishing'} error={state.finishError} />
-        ) : showReveal ? (
-          <RevealView record={lastAnswer} isLast={state.index + 1 >= total} onNext={next} busy={state.phase === 'finishing'} error={state.finishError} />
-        ) : question ? (
-          <QuestionView
-            question={question}
-            onChoose={choose}
-            busy={state.phase === 'answering'}
-            error={state.answerError}
-            timed={limitMs > 0}
-          />
-        ) : null}
-      </main>
-    </>
+    <DriveSession
+      label={practice ? 'REPLAY' : mode === 'daily' ? 'DAILY DRIVE' : 'ARCHIVE'}
+      number={challenge.number}
+      questions={challenge.questions}
+      state={state}
+      remainingMs={remainingMs}
+      limitMs={limitMs}
+      onChoose={choose}
+      onNext={next}
+      onFinish={finish}
+    />
   );
 }

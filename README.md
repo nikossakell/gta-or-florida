@@ -9,7 +9,7 @@
 **Αρχιτεκτονική (Cloudflare, χωρίς always-on server):**
 
 ```text
-Παίκτες → Cloudflare Pages (React/Vite/Tailwind/TanStack, static)
+Παίκτες → Cloudflare Pages (React/Vite/TanStack, static)
             │ HTTPS → VITE_API_BASE_URL
             ▼
           Cloudflare Worker (apps/worker) ── D1 (η μόνη production βάση)
@@ -85,7 +85,7 @@ apps/ingest-worker/   Cloudflare ingestion Worker: Cron Trigger → Workflow (bo
 apps/ingest/          Κοινή λογική ingestion (runtime-neutral) + τοπικά CLI: adapters (gdelt, grandtheftwiki, rss, http), filters, deduplicate,
                       verify (SSRF-safe link check), classify (Workers AI REST), import (Worker client), run, admin CLI, legacy
 apps/review/          Τοπικό editorial review dashboard (127.0.0.1): Worker in-process + τοπική D1, approve/investigate/reject
-apps/web/             React 19 + Vite + Tailwind CSS v4 + TanStack Query + TanStack Router (Cloudflare Pages)
+apps/web/             React 19 + Vite + TanStack Query + TanStack Router, UI «Daily Drive» (pixel art, δικό του CSS) (Cloudflare Pages)
 scripts/              static demo (validate/build-pages/schedule), check-config, seed-local, smoke
 data/                 sources.json (discovery config), questions.approved.json (dev fixtures), daily-schedule.json (static demo)
 ```
@@ -129,8 +129,8 @@ Protected (`Authorization: Bearer …`, χωρίς CORS): `import`, `known`, `ti
 - **localStorage μόνο** (`gof:v1:*`): ολοκληρωμένα αποτελέσματα, in-progress γύρος (reload = resume, όχι restart), streak. Είναι casual anti-repeat, **όχι tamper-proof** — αναφέρεται και στη σελίδα About, που έχει και κουμπί «Clear my local data».
 - Archive: τελευταίες 7 ημέρες, φίλτρα All/Played/Not played. Τα archive plays δεν αλλάζουν το streak· τα replays δεν αποθηκεύονται.
 - Fallbacks: loading skeletons, «No headlines today» (`DAILY_NOT_READY`, ποτέ σιωπηλό recycle ή invented content), «Round withdrawn» (`ROUND_WITHDRAWN`, ίδιο μήνυμα για όλους), «Stuck in traffic» error με error code και retry, offline detection.
-- Accessibility: πραγματικά `<button>`/`<a>`, ≥ 44px targets, ορατό focus, focus management σε κάθε νέο τίτλο/reveal, `aria-live` για timer thresholds και αποτελέσματα, keyboard shortcuts (G / F / Enter), `prefers-reduced-motion`, AA contrast, skip link, max-width ~520px στο gameplay.
-- Fonts (Shrikhand, Archivo) είναι self-hosted μέσω `@fontsource` — κανένα request σε Google.
+- Accessibility: πραγματικά `<button>`/`<a>`, ≥ 44px targets, ορατό focus, focus management σε κάθε νέο τίτλο/reveal, `aria-live` για timer thresholds και αποτελέσματα, keyboard shortcuts (G / F / Enter), `prefers-reduced-motion`, AA contrast, skip link, max-width ~760px στο gameplay.
+- Fonts (Press Start 2P, Silkscreen, Rubik) είναι self-hosted μέσω `@fontsource` — κανένα request σε Google.
 
 ---
 

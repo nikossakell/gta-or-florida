@@ -34,7 +34,6 @@ export function DriveResults({ result, practice = false, replay = 0 }: { result:
     if (done) announce(`Final score ${result.score} out of ${result.total}. ${end.title}.`);
   }, [done, result.score, result.total, end.title, announce]);
 
-  // Same outcomes and messages as the legacy results screen.
   async function onShare() {
     const outcome = await shareText(text);
     setStatus(

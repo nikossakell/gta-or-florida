@@ -1,5 +1,4 @@
 const DAY = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
-const LONG = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 const PUB = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 function at(date: string): Date {
@@ -9,11 +8,6 @@ function at(date: string): Date {
 /** "Thu 19 Nov" */
 export function shortDay(date: string): string {
   return DAY.format(at(date)).replace(',', '');
-}
-
-/** "Thursday 19 November 2026" */
-export function longDay(date: string): string {
-  return LONG.format(at(date)).replace(',', '');
 }
 
 /** "19 Nov 2026" */

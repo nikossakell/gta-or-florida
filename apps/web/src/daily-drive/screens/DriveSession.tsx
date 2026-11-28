@@ -104,7 +104,7 @@ export function DriveSession({ label, number, questions, state, remainingMs, lim
   const mood = reaction ?? base;
   const line = useMascotLine(mood);
 
-  // ---- focus (same targets as the legacy views, except Next, which RevealPanel focuses) ----
+  // ---- focus (Next is focused by RevealPanel) ----
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (phase === 'question') headingRef.current?.focus({ preventScroll: true });

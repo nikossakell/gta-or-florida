@@ -2,8 +2,8 @@ import type { RevealedQuestion } from '@gof/core';
 import { publishedDay } from '../../lib/format.ts';
 
 /**
- * Explanation + source for a revealed question: the same fields, under the same conditions, as the
- * legacy AnswerDetails (features/game/RevealView.tsx), restyled. Everything comes from the API's reveal.
+ * Explanation + source for a revealed question. Everything comes from the API's reveal: development
+ * fiction is labelled as fiction and has no source link.
  */
 export function AnswerInfo({ question }: { question: RevealedQuestion }) {
   const lore = question.answer === 'gta' && question.gtaSubtype === 'gta_lore';
@@ -43,7 +43,7 @@ export function answerWord(answer: 'gta' | 'florida'): string {
   return answer === 'gta' ? 'GTA' : 'FLORIDA';
 }
 
-/** "Florida · Real report" style label that the legacy AnswerBadge shows. */
+/** "Florida · Real report" style label for a revealed answer. */
 export function answerKind(question: RevealedQuestion): string {
   if (question.answer === 'florida') return question.placeholder ? 'Real-report slot' : 'Real report';
   return question.gtaSubtype === 'gta_lore' ? (question.game ?? 'In-game event') : 'GTA-style · Sample';

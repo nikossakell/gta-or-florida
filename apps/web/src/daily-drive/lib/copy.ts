@@ -20,7 +20,7 @@ export const COPY = copyJson as unknown as {
     timerStates: { running: string; urgent: string; paused: string };
   };
   disclaimer: string;
-  /** Spoiler policy notice; same text as the legacy footer's SPOILER_NOTICE. */
+  /** Spoiler policy notice (landing footer and About). */
   spoilerNotice: string;
 };
 

@@ -9,8 +9,6 @@ interface ImportMetaEnv {
    * Empty: same-origin /api (Vite dev proxy → `wrangler dev`).
    */
   readonly VITE_API_BASE_URL?: string;
-  /** Daily Drive redesign: "1" on, "0" off (rollback); unset = on, except in tests and the legacy static `pages` build (src/daily-drive/flag.ts). */
-  readonly VITE_DAILY_DRIVE?: string;
 }
 
 interface ImportMeta {

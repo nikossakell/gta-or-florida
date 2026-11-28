@@ -1,16 +1,23 @@
 /*
- * Daily Drive styles, derived from redesign/css/{tokens,animations,components}.css.
- *
- * Scoping: every rule lives under `.dd`, a class that src/daily-drive/boot.ts puts on <html>
- * only when the VITE_DAILY_DRIVE flag is on, so nothing here touches the legacy UI.
- *  - Kit element rules (button, a, kbd, focus) sit in Tailwind's `base` layer, so Tailwind
- *    utilities on legacy screens still win over them.
- *  - Kit components sit in the `components` layer.
- *  - Keyframes are prefixed `dd-`; the play card is `.card.panel`, because the legacy UI
- *    already uses `.card`.
- *  - The unlayered block at the end is the light re-skin of the legacy screens (archive,
- *    about, loading/error/empty states).
+ * GTA or Florida? — Daily Drive styles (the app's only design), derived from redesign/css/{tokens,animations,components}.css.
+ * Order: reset → keyframes → tokens and page → kit components → app additions → reduced motion.
  */
+
+/* ---------- reset (what the kit assumes: no default margins, borders or list bullets) ---------- */
+*,::before,::after{box-sizing:border-box;border:0 solid;margin:0;padding:0;min-width:0}
+html{line-height:1.5;-webkit-text-size-adjust:100%;tab-size:4}
+h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}
+a{color:inherit;text-decoration:inherit}
+b,strong{font-weight:bolder}
+code,kbd,pre,samp{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1em}
+small{font-size:80%}
+ol,ul,menu{list-style:none}
+img,svg,video,canvas{display:block;vertical-align:middle}
+img,video{max-width:100%;height:auto}
+button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit;background-color:transparent;border-radius:0}
+button{appearance:button}
+textarea{resize:vertical}
+summary{display:list-item}
 
 /* ---------- keyframes (redesign/css/animations.css) ---------- */
 @keyframes dd-glow{0%{outline:4px solid var(--cream);outline-offset:0}50%{outline:4px solid var(--cream);outline-offset:9px}100%{outline:4px solid transparent;outline-offset:14px}}
@@ -26,8 +33,7 @@
 @keyframes dd-tick{50%{transform:scale(1.25)}}
 @keyframes dd-card{from{opacity:0;transform:translateY(40px) rotate(-6deg)}}
 /* ---------- tokens + page (redesign/css/tokens.css, components.css head) ---------- */
-@layer base {
-  .dd {
+:root {
     color-scheme: dark;
     background: var(--night);
     --night: #140f2b;
@@ -49,42 +55,21 @@
     --lab: 'Silkscreen', ui-monospace, monospace;
     --read: 'Rubik', system-ui, sans-serif;
     --notch: polygon(6px 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px, 100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px), 0 6px, 3px 6px, 3px 3px, 6px 3px);
-
-    /* Light re-skin: point the legacy Tailwind theme at the Daily Drive palette and fonts. */
-    --color-night: var(--night);
-    --color-night-2: #1a1134;
-    --color-card: var(--plum);
-    --color-card-2: var(--plum2);
-    --color-line: var(--line);
-    --color-pink: var(--pink);
-    --color-pink-deep: var(--pinkD);
-    --color-teal: var(--teal);
-    --color-teal-deep: var(--tealD);
-    --color-sun: var(--yellow);
-    --color-ember: var(--orange);
-    --color-cream: var(--cream);
-    --color-muted: var(--muted);
-    --color-dim: var(--dim);
-    --color-ink: var(--night);
-    --font-sans: var(--read);
-    --font-display: var(--px);
-  }
-  .dd *{box-sizing:border-box;min-width:0}
-  .dd body{margin:0;background-color:var(--night);color:var(--cream);font:16px/1.5 var(--read);overflow-x:clip;min-height:100dvh;
-  background-image:radial-gradient(#FFF1D622 1px,transparent 1.4px),radial-gradient(#2DE2C81c 1px,transparent 1.4px);background-size:34px 34px,53px 53px;background-position:0 0,17px 23px}
-  .dd body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:90;background:repeating-linear-gradient(to bottom,rgba(0,0,0,.10) 0 1px,transparent 1px 3px)}
-  .dd [hidden]{display:none!important}
-  .dd button{font:inherit;color:inherit;cursor:pointer}
-  .dd a{color:var(--teal)}
-  .dd :focus-visible{outline:3px dashed var(--yellow);outline-offset:3px;border-radius:0}
-  /* Headings focused by script for screen readers (tabindex=-1) get no ring, as in the legacy UI. */
-  .dd [tabindex="-1"]:focus{outline:none}
-  .dd kbd{font-family:var(--lab);font-size:11px;border:2px solid currentColor;padding:0 5px;line-height:16px;display:inline-block}
 }
 
+  *{box-sizing:border-box;min-width:0}
+  body{margin:0;background-color:var(--night);color:var(--cream);font:16px/1.5 var(--read);overflow-x:clip;min-height:100dvh;
+  background-image:radial-gradient(#FFF1D622 1px,transparent 1.4px),radial-gradient(#2DE2C81c 1px,transparent 1.4px);background-size:34px 34px,53px 53px;background-position:0 0,17px 23px}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:90;background:repeating-linear-gradient(to bottom,rgba(0,0,0,.10) 0 1px,transparent 1px 3px)}
+  [hidden]{display:none!important}
+  button{font:inherit;color:inherit;cursor:pointer}
+  a{color:var(--teal)}
+  :focus-visible{outline:3px dashed var(--yellow);outline-offset:3px;border-radius:0}
+  /* Headings focused by script for screen readers (tabindex=-1) get no ring. */
+  [tabindex="-1"]:focus{outline:none}
+  kbd{font-family:var(--lab);font-size:11px;border:2px solid currentColor;padding:0 5px;line-height:16px;display:inline-block}
+
 /* ---------- components (redesign/css/components.css) ---------- */
-@layer components {
-.dd {
 .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .sprite,.px{image-rendering:pixelated;image-rendering:crisp-edges}
 .lab{font-family:var(--lab)}
@@ -271,16 +256,12 @@ display:flex;flex-direction:column;align-items:center;justify-content:center;gap
 .histbox li .shape{margin-top:2px}
 .histbox small{display:block;font-family:var(--lab);font-size:11px;color:var(--dim);margin-top:2px}
 
-}
-}
 
 /* ---------- reduced motion (OS setting, or body.rm for an in-app toggle) ---------- */
-.dd body.rm *,.dd body.rm *::before,.dd body.rm *::after{animation:none!important;transition:none!important}
-@media (prefers-reduced-motion: reduce){.dd *,.dd *::before,.dd *::after{animation:none!important;transition:none!important}}
+body.rm *,body.rm *::before,body.rm *::after{animation:none!important;transition:none!important}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
 /* ---------- Daily Drive additions (not in the kit) ---------- */
-@layer components {
-.dd {
   /* Links styled as kit buttons (Start, route links). */
   a.arcade,a.btn2,a.iconbtn{text-decoration:none;color:var(--night)}
   a.btn2,a.iconbtn{color:var(--cream);display:inline-grid;place-items:center}
@@ -315,15 +296,40 @@ display:flex;flex-direction:column;align-items:center;justify-content:center;gap
   .postcard[data-hidden]{visibility:hidden}
   .sample-note{margin-top:26px}
   .burst{position:fixed;inset:0;pointer-events:none;z-index:81}
-}
-}
+  .histbox h2{font-family:var(--px);font-weight:400;font-size:13px;color:var(--yellow);margin:0 0 10px}
 
-/* ---------- light re-skin of the legacy screens (unlayered: beats Tailwind utilities) ---------- */
-.dd .font-display{font-family:var(--px);font-weight:400;font-size:clamp(18px,5.2vw,28px);line-height:1.35;letter-spacing:0}
-.dd header a .font-display{font-size:clamp(11px,3.2vw,15px)}
-.dd .label-wide,.dd .btn-wide{font-family:var(--lab);font-stretch:normal;letter-spacing:.03em}
-.dd .card{background:var(--plum);border:0;border-radius:0;clip-path:var(--notch);box-shadow:inset 0 0 0 3px var(--line)}
-.dd [class*="rounded"]{border-radius:0}
-
-/* headings used where the kit had h3 */
-@layer components{.dd .histbox h2{font-family:var(--px);font-weight:400;font-size:13px;color:var(--yellow);margin:0 0 10px}}
+/* ---------- pages: archive, about, loading / error / empty states ---------- */
+.skip{position:absolute;left:12px;top:-80px;z-index:100;background:var(--yellow);color:var(--night);font-family:var(--lab);font-size:13px;padding:12px 14px}
+.skip:focus{top:12px}
+.page-title{font-family:var(--px);font-weight:400;font-size:clamp(16px,4.6vw,22px);line-height:1.3;color:var(--pink);margin-top:14px;text-shadow:3px 3px 0 var(--tealD)}
+.intro{color:var(--muted);margin-top:12px;max-width:60ch}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.filters .btn2[aria-pressed=true]{border-color:var(--yellow);color:var(--yellow)}
+.rounds{display:grid;gap:10px;margin-top:18px}
+.round{display:flex;align-items:center;gap:14px;padding:14px 16px}
+.round .no{font-family:var(--px);font-size:15px;color:var(--yellow);min-width:48px;flex:none}
+.round .when{flex:1}
+.round .day{font-weight:600;font-size:17px;white-space:nowrap}
+.round .st{font-family:var(--lab);font-size:12px;color:var(--muted)}
+.round .st b{color:var(--teal);font-weight:400}
+.round .btn2{flex:none}
+.arcade.mini{min-height:48px;width:auto;flex:none;padding:0 18px}
+.arcade.mini .big{font-size:12px}
+.state{display:grid;justify-items:center;text-align:center;gap:12px;padding:24px 18px 22px;margin-top:18px}
+.state h1,.state h2{font-family:var(--px);font-weight:400;font-size:clamp(15px,4.4vw,19px);line-height:1.35;color:var(--yellow);text-transform:uppercase}
+.state.err h1,.state.err h2{color:var(--orange)}
+.state p{color:var(--muted);max-width:46ch}
+.state .code{font-family:var(--lab);font-size:12px;color:var(--dim)}
+.state .acts{display:grid;gap:12px;width:100%;max-width:420px;margin-top:8px}
+.loading{min-height:140px;margin-top:18px;animation:dd-blink 1.2s steps(2) infinite}
+.doc{display:grid;gap:14px}
+.doc section{padding:16px 18px 18px}
+.doc h2{font-family:var(--px);font-weight:400;font-size:13px;line-height:1.4;color:var(--yellow);margin-bottom:10px}
+.doc p{color:var(--muted);margin-bottom:10px}
+.doc p:last-child{margin-bottom:0}
+.doc strong{color:var(--cream)}
+.doc strong.gta{color:var(--pink)}
+.doc strong.fl{color:var(--teal)}
+.doc a{text-decoration:underline;text-underline-offset:3px}
+.doc .btn2{width:100%;margin:4px 0 8px}
+.doc .ok{font-family:var(--lab);font-size:12px;color:var(--teal);min-height:18px}

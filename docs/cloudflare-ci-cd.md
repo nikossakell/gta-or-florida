@@ -44,7 +44,7 @@ Go to Workers & Pages → `gta-florida-api-staging` → Settings → Build → *
 | Deploy command | `npm run ci:worker && npm run deploy:ci:staging -w @gof/worker && npm run smoke:ci` |
 | Root directory | `/` *(repo root; npm workspaces install from there)* |
 | Build variables | `SMOKE_URL` = `https://gta-florida-api-staging.<subdomain>.workers.dev` *(optional)*. No Node pin needed: `.nvmrc` = 22. |
-| Build watch paths | include `*`; exclude `docs/*`, `*.md`, `redesign/*`, `screens/*` |
+| Build watch paths | include `*`; exclude `docs/*`, `*.md`, `redesign/*` |
 | API token | the default token Cloudflare creates (Workers Scripts edit). If a deploy fails on a missing permission, add only what the error names. |
 
 The checks run inside the deploy command on purpose. The docs do not state that a failed build command skips the deploy, but `a && b` guarantees it.
@@ -78,7 +78,7 @@ Go to Workers & Pages → Create → Pages → **Connect to Git** (or, if the pr
 | Build output directory | `apps/web/dist` |
 | Root directory | *(empty = repo root)* |
 | Build watch paths | include `apps/web/*`, `packages/*`, `scripts/*`, `data/*`, `package.json`, `package-lock.json`, `.nvmrc` |
-| Env vars: **Production** | `VITE_API_BASE_URL` = `https://gta-florida-api-production.<subdomain>.workers.dev`; `VITE_PUBLIC_URL` = `https://gta-or-florida.pages.dev` (or your domain); `VITE_DAILY_DRIVE` unset (new UI) |
+| Env vars: **Production** | `VITE_API_BASE_URL` = `https://gta-florida-api-production.<subdomain>.workers.dev`; `VITE_PUBLIC_URL` = `https://gta-or-florida.pages.dev` (or your domain) |
 | Env vars: **Preview** | `VITE_API_BASE_URL` = `https://gta-florida-api-staging.<subdomain>.workers.dev` |
 
 Preview branch alias: the docs say branch names are lowercased and non-alphanumerics become `-`, so this branch is served at `integration-redesign-question-bank.gta-or-florida.pages.dev`. The staging Worker's CORS accepts `<label>.gta-or-florida.pages.dev` (`PAGES_PREVIEW_PROJECT`), plus its `FRONTEND_ORIGIN` and `EXTRA_ORIGINS`. The production Worker accepts only `https://gta-or-florida.pages.dev`, so previews can never reach production data.
@@ -159,7 +159,7 @@ Preview branch alias: the docs say branch names are lowercased and non-alphanume
 ## Rollback
 
 - **Worker:** Workers & Pages → the Worker → Deployments → roll back to the previous version, or `npx wrangler rollback --env <env>` in `apps/worker`. Then revert the commit on the branch so the next build does not redeploy it.
-- **Pages:** Deployments → choose the previous production deployment → **Rollback to this deployment**. UI only: set `VITE_DAILY_DRIVE=0` and retry the deployment.
+- **Pages:** Deployments → choose the previous production deployment → **Rollback to this deployment**.
 - **Pause automation:**
   - Worker → Settings → Build → change the branch or disconnect;
   - Pages → turn off automatic production deployments, or set preview branches to None.

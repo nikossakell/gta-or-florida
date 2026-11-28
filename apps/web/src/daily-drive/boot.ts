@@ -1,6 +1,5 @@
 /**
- * Imported by main.tsx before the first render. Only when DAILY_DRIVE is on: otherwise vite.config.ts
- * replaces this module with boot-off.ts.
+ * Imported by main.tsx before the first render: fonts, styles and the pixel engine.
  * Fonts are self-hosted (@fontsource): the production CSP only allows fonts from 'self'.
  */
 import '@fontsource/press-start-2p/latin-400.css';
@@ -17,7 +16,6 @@ import { prefersReducedMotion } from './lib/motion.ts';
 
 engine.setReducedMotion(prefersReducedMotion);
 provideEngine(engine);
-document.documentElement.classList.add('dd');
 
 if (import.meta.env.DEV) {
   // Preview tools: development builds only (this branch is removed from production bundles).
