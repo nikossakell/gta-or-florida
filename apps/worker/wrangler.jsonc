@@ -37,9 +37,9 @@
         "APP_ENV": "staging",
         "AUTO_PUBLISH_MODE": "shadow",
         // Pages preview deployments: https://<hash-or-branch>.<project>.pages.dev
-        "PAGES_PREVIEW_PROJECT": "gta-or-florida",
+        "PAGES_PREVIEW_PROJECT": "gta-or-florida-staging",
         "FRONTEND_ORIGIN": "https://staging.gta-or-florida.pages.dev",
-        // Standalone staging Pages project (exact match; its subdomains are NOT allowed).
+        // Production-branch URL of the staging Pages project (its preview deployments: PAGES_PREVIEW_PROJECT).
         "EXTRA_ORIGINS": "https://gta-or-florida-staging.pages.dev"
       },
       "d1_databases": [

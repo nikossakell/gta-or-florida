@@ -17,7 +17,8 @@ const BLOCKED = [
   'https://gta-or-florida-staging.pages.dev:8443', // wrong port
   'https://gta-or-florida-staging.pages.dev/', // not a serialized origin
   'https://gta-or-florida-staging.pages.dev.evil.com', // suffix attack
-  'https://x.gta-or-florida-staging.pages.dev', // subdomains of the staging project are not allowed
+  'https://a.b.gta-or-florida-staging.pages.dev', // a preview is exactly one label
+  'https://abc123.gta-or-florida.pages.dev', // previews of the production Pages project
   'https://evilgta-or-florida-staging.pages.dev',
   'https://GTA-OR-FLORIDA-STAGING.pages.dev', // non-canonical form of the allowed origin
 ];
@@ -83,8 +84,9 @@ describe('CORS — staging environment', () => {
     expectCors(limited, STAGING_PAGES);
   });
 
-  it('keeps the previously allowed staging origins', async () => {
-    for (const origin of ['https://staging.gta-or-florida.pages.dev', 'https://abc123.gta-or-florida.pages.dev']) {
+  it('allows the staging Pages project\'s preview deployments (hash and branch alias)', async () => {
+    expect(wranglerVars('staging').PAGES_PREVIEW_PROJECT).toBe('gta-or-florida-staging');
+    for (const origin of ['https://staging.gta-or-florida.pages.dev', 'https://28e5941b.gta-or-florida-staging.pages.dev', 'https://integration-redesign-question-bank.gta-or-florida-staging.pages.dev']) {
       const res = await fetchAs('/api/challenge/today', origin);
       expect(res.status).toBe(503);
       expectCors(res, origin);
