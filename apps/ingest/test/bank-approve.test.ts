@@ -103,6 +103,14 @@ describe('bank:approve', () => {
     expect(h.lines.at(-2)).toMatch(/Approved 2, already approved 0, not imported 0, refused 0/);
   });
 
+  it('never sends a verification date later than the dashboard decision (local note date vs UTC decision)', async () => {
+    const b = gta({ notes: 'Editorially approved in the local review dashboard by owner at 2026-11-27T22:30:00.000Z. Batch 011. Verified 2026-11-28 against two reference sites.' });
+    const h = harness(file([b]), { [key(b)]: cand(b) });
+    expect(await main(['--file', 'approved.json'], h.deps)).toBe(0);
+    expect(h.sent[0]!.factual!.verifiedDate).toBe('2026-11-27');
+    expect(h.sent[0]!.factual!.notes).toMatch(/during research \(2026-11-27\)/);
+  });
+
   it('refuses the whole file when a question has no dashboard approval record (nothing is sent)', async () => {
     const a = fl({ notes: 'Batch 001. Verified 2026-11-25.' });
     const h = harness(file([a, gta()]), {});
