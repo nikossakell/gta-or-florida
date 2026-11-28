@@ -1,8 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#140f2b"/>
-  <circle cx="32" cy="34" r="20" fill="#ffb547"/>
-  <rect x="12" y="34" width="40" height="4" fill="#ff5fa2"/>
-  <rect x="12" y="42" width="40" height="4" fill="#ff5fa2"/>
-  <path d="M10 44c0-8 6-13 14-13h22c5 0 9 3 9 6s-3 5-7 5H24l-4 6c-3 2-10 1-10-4z" fill="#4cc78a" stroke="#140f2b" stroke-width="2.5" stroke-linejoin="round"/>
-  <rect x="18" y="30" width="16" height="6" rx="3" fill="#140f2b"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" shape-rendering="crispEdges">
+<title>GTA or Florida? — Gus</title>
+<path fill="#140F2B" d="M2 0h11v1h-11zM14 0h8v1h-8zM1 1h2v1h-2zM4 1h19v1h-19zM3 5h6v1h-6zM2 6h1v1h-1zM9 6h1v1h-1zM2 7h1v1h-1zM9 7h2v1h-2zM1 8h1v1h-1zM11 8h1v1h-1zM1 9h1v1h-1zM12 9h1v1h-1zM20 9h2v1h-2zM1 10h1v1h-1zM12 10h8v1h-8zM22 10h1v1h-1zM1 11h1v1h-1zM22 11h1v1h-1zM1 12h1v1h-1zM22 12h1v1h-1zM1 13h1v1h-1zM22 13h1v1h-1zM1 14h1v1h-1zM22 14h1v1h-1zM1 15h1v1h-1zM21 15h1v1h-1zM1 16h1v1h-1zM21 16h1v1h-1zM1 17h1v1h-1zM11 17h10v1h-10zM1 18h1v1h-1zM11 18h1v1h-1zM1 19h1v1h-1zM12 19h1v1h-1zM1 20h1v1h-1zM12 20h1v1h-1zM1 21h1v1h-1zM12 21h1v1h-1zM1 22h1v1h-1zM12 22h1v1h-1zM12 23h1v1h-1z"/>
+<path fill="#FFF1D6" d="M13 0h1v1h-1zM3 1h1v1h-1zM10 2h1v1h-1zM23 3h1v1h-1zM5 20h6v1h-6zM5 21h6v1h-6zM5 23h6v1h-6z"/>
+<path fill="#1D1340" d="M0 2h10v1h-10zM11 2h4v1h-4zM21 2h3v1h-3zM0 3h14v1h-14zM22 3h1v1h-1z"/>
+<path fill="#FFD25A" d="M15 2h6v1h-6zM14 3h8v1h-8zM13 4h10v1h-10zM13 5h10v1h-10z"/>
+<path fill="#2B1852" d="M0 4h13v1h-13zM23 4h1v1h-1zM0 5h3v1h-3zM9 5h4v1h-4zM23 5h1v1h-1z"/>
+<path fill="#431D61" d="M0 6h2v1h-2zM10 6h3v1h-3zM23 6h1v1h-1zM0 7h2v1h-2zM11 7h2v1h-2zM23 7h1v1h-1zM0 8h1v1h-1zM12 8h12v1h-12z"/>
+<path fill="#41B465" d="M3 6h2v1h-2zM6 6h3v1h-3zM3 7h5v1h-5zM2 8h9v1h-9zM2 9h1v1h-1zM7 9h1v1h-1zM20 10h2v1h-2zM2 11h1v1h-1zM7 11h1v1h-1zM2 12h20v1h-20zM2 13h9v1h-9zM12 13h10v1h-10zM2 14h1v1h-1zM4 14h7v1h-7zM21 14h1v1h-1zM2 15h9v1h-9zM2 16h2v1h-2zM5 16h6v1h-6zM2 17h4v1h-4zM7 17h4v1h-4zM2 18h9v1h-9zM4 19h8v1h-8zM4 20h1v1h-1zM11 20h1v1h-1zM4 21h1v1h-1zM11 21h1v1h-1zM4 22h1v1h-1zM11 22h1v1h-1zM4 23h1v1h-1zM11 23h1v1h-1z"/>
+<path fill="#22693F" d="M5 6h1v1h-1zM8 7h1v1h-1zM21 11h1v1h-1zM11 13h1v1h-1zM3 14h1v1h-1zM11 14h10v1h-10zM4 16h1v1h-1zM6 17h1v1h-1zM2 19h2v1h-2zM2 20h2v1h-2zM2 21h2v1h-2zM2 22h2v1h-2zM2 23h2v1h-2z"/>
+<path fill="#FF9F45" d="M13 6h10v1h-10zM13 7h10v1h-10z"/>
+<path fill="#6B2468" d="M0 9h1v1h-1zM23 9h1v1h-1zM0 10h1v1h-1zM23 10h1v1h-1z"/>
+<path fill="#0B0816" d="M3 9h1v1h-1zM5 9h2v1h-2zM8 9h1v1h-1zM10 9h2v1h-2zM2 10h3v1h-3zM6 10h4v1h-4zM11 10h1v1h-1zM3 11h4v1h-4zM8 11h4v1h-4z"/>
+<path fill="#FF5FA2" d="M4 9h1v1h-1zM5 10h1v1h-1zM0 15h1v1h-1zM22 15h2v1h-2z"/>
+<path fill="#2DE2C8" d="M9 9h1v1h-1zM10 10h1v1h-1z"/>
+<path fill="#FF6E6E" d="M13 9h7v1h-7zM22 9h1v1h-1z"/>
+<path fill="#A42F6C" d="M0 11h1v1h-1zM23 11h1v1h-1zM0 12h1v1h-1zM23 12h1v1h-1z"/>
+<path fill="#9BE28E" d="M12 11h9v1h-9zM11 15h2v1h-2zM14 15h2v1h-2zM17 15h2v1h-2zM20 15h1v1h-1zM11 16h10v1h-10z"/>
+<path fill="#E0476A" d="M0 13h1v1h-1zM23 13h1v1h-1zM0 14h1v1h-1zM23 14h1v1h-1z"/>
+<path fill="#FFFFFF" d="M13 15h1v1h-1zM16 15h1v1h-1zM19 15h1v1h-1z"/>
+<path fill="#1A1036" d="M0 16h1v1h-1zM22 16h1v1h-1zM0 18h1v1h-1zM12 18h5v1h-5zM18 18h6v1h-6zM0 19h1v1h-1zM13 19h4v1h-4zM18 19h6v1h-6zM0 21h1v1h-1zM13 21h4v1h-4zM18 21h6v1h-6zM13 22h4v1h-4zM18 22h5v1h-5zM13 23h4v1h-4zM18 23h4v1h-4z"/>
+<path fill="#3B1E5E" d="M23 16h1v1h-1zM0 17h1v1h-1zM21 17h3v1h-3zM17 18h1v1h-1zM17 19h1v1h-1zM0 20h1v1h-1zM13 20h11v1h-11zM17 21h1v1h-1zM17 22h1v1h-1zM17 23h1v1h-1z"/>
+<path fill="#E6C796" d="M5 22h6v1h-6z"/>
 </svg>
